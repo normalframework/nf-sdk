@@ -63,7 +63,8 @@ services:
       - /tmp/nf-bacnet/:/etc/bacnet/
     environment:
       - SERVICE_BIND_ADDRESS=172.17.0.1:9090
-      - BACNET_IFACE=enp1s0
+    # only needed if the bacnet process doesn't auto-detect the correct interface.
+    #  - BACNET_IFACE=enp1s0
 
     network_mode: host
     depends_on:
