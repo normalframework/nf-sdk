@@ -46,6 +46,7 @@ services:
     
   # Static nginx server with the console web assets.
   admin-static:
+    env_file: .env.dev
     image: normalframework/nf-console:develop
     networks:
       - internal
@@ -75,7 +76,7 @@ services:
       - internal
     environment:
       - BACNET_IP_DEBUG=1
-    
+
   # Service that manages scanning the local network for BACnet devices
   scan-service:
     image: normalframework/nf:develop
@@ -137,15 +138,15 @@ services:
 
   # Create sparkplug services to send data out using MQTT
   #  See the configuration guide on docs.normal.dev for example setup.
-#  sparkplug-service:
-#    image: normalframework/nf:develop
-#    env_file: .env.dev
-##    command: nf sparkplug
-#    networks:
-#      - internal
-#    environment:
-#      - MQTT_BROKER=localhost
-#    
+  sparkplug-service:
+    image: normalframework/nf:develop
+    env_file: .env.dev
+    command: nf sparkplug
+    networks:
+      - internal
+#   environment:
+#     - MQTT_BROKER=localhost
+   
 
 
 networks:
