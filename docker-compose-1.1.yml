@@ -26,8 +26,8 @@ services:
   # See envoy.yaml in this conf as a starting point to adapt to your
   #  own configuration.
   envoy:
-    image: normalframework/envoy:develop
-    env_file: .env.dev
+    image: normalframework/envoy:1.1.0
+    env_file: .env.1.1
     command: /usr/local/bin/env-envoy --log-level debug
     networks:
       - internal
@@ -37,7 +37,7 @@ services:
   # Most persistent data is in redis.  This is essentially an
   #  unmodified upstream with RediSearch and RedisTimeseries installed.
   redis:
-    image: normalframework/redis:develop
+    image: normalframework/redis:1.1.0
     networks:
       - internal
 
@@ -50,8 +50,8 @@ services:
     
   # Static nginx server with the console web assets.
   admin-static:
-    env_file: .env.dev
-    image: normalframework/nf-console:develop
+    env_file: .env.1.1
+    image: normalframework/nf-console:1.1.0
     networks:
       - internal
     depends_on:
@@ -63,8 +63,8 @@ services:
   # BACnet service.  Unlike the the other services, this must run in
   #  network host mode; otherwise UDP broadcast works badly for discovery.  
   bacnet-service:
-    image: normalframework/nf:develop
-    env_file: .env.dev
+    image: normalframework/nf:1.1.0
+    env_file: .env.1.1
     command: nf bacnet-hpl  #-memprofile mem.prof
     # provide a volume here to persist bacnet settings
     volumes:
@@ -86,8 +86,8 @@ services:
 
   # Service that manages scanning the local network for BACnet devices
   scan-service:
-    image: normalframework/nf:develop
-    env_file: .env.dev
+    image: normalframework/nf:1.1.0
+    env_file: .env.1.1
     command: nf bacnet-scan
     networks:
       - internal
@@ -97,8 +97,8 @@ services:
     
   # Service that collects data by polling configured points.
   poll-service:
-    image: normalframework/nf:develop
-    env_file: .env.dev
+    image: normalframework/nf:1.1.0
+    env_file: .env.1.1
     command: nf bacnet-poll 
     networks:
       - internal
@@ -108,8 +108,8 @@ services:
     
   # the points database
   point-service:
-    image: normalframework/nf:develop
-    env_file: .env.dev
+    image: normalframework/nf:1.1.0
+    env_file: .env.1.1
     command: nf point
     networks:
       - internal
@@ -127,8 +127,8 @@ services:
 
   # Tracks the state of devices in the network
   bacnet-status-service:
-    image: normalframework/nf:develop
-    env_file: .env.dev
+    image: normalframework/nf:1.1.0
+    env_file: .env.1.1
     command: nf hpl-status
     networks:
       - internal
@@ -136,17 +136,17 @@ services:
   # Provides frontend configuration information like site name and auth configuration
    # unauthenticated
   platform-service:
-    image: normalframework/nf:develop
-    env_file: .env.dev
+    image: normalframework/nf:1.1.0
+    env_file: .env.1.1
     command: nf platform
     networks:
       - internal      
 
   # Create sparkplug services to send data out using MQTT
-  #  See the configuration guide on docs.normal.dev for example setup.
+  #  See the configuration guide on docs.normal.1.1 for example setup.
   sparkplug-service:
-    image: normalframework/nf:develop
-    env_file: .env.dev
+    image: normalframework/nf:1.1.0
+    env_file: .env.1.1
     command: nf sparkplug
     networks:
       - internal
@@ -154,10 +154,10 @@ services:
 #     - MQTT_BROKER=localhost
    
   # Create sparkplug services to send data out using MQTT
-  #  See the configuration guide on docs.normal.dev for example setup.
+  #  See the configuration guide on docs.normal.1.1 for example setup.
   command-service:
-    image: normalframework/nf:develop
-    env_file: .env.dev
+    image: normalframework/nf:1.1.0
+    env_file: .env.1.1
     command: nf command
     networks:
       - internal
