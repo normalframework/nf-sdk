@@ -145,14 +145,6 @@ services:
     environment:
       - TEMPLATE_DIR=/var/templates
 
-  graph-service:
-    image: normalframework/nf-ontology:develop
-    env_file: .env.1.2
-    networks:
-      - internal
-    environment:
-      - DATA_DIR=/app/data/
-      
 
   # Create sparkplug services to send data out using MQTT
   #  See the configuration guide on docs.normal.1.2 for example setup.
