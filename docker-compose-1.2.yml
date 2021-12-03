@@ -27,7 +27,7 @@ services:
   #  own configuration.
   envoy:
     image: normalframework/envoy:develop
-    env_file: .env.dev
+    env_file: .env.1.2
     networks:
       - internal
     ports:
@@ -46,7 +46,7 @@ services:
     
   # Static nginx server with the console web assets.
   admin-static:
-    env_file: .env.dev
+    env_file: .env.1.2
     image: normalframework/nf-console:develop
     networks:
       - internal
@@ -60,7 +60,7 @@ services:
   #  network host mode; otherwise UDP broadcast works badly for discovery.  
   bacnet-service:
     image: normalframework/nf:develop
-    env_file: .env.dev
+    env_file: .env.1.2
     command: nf bacnet-hpl  #-memprofile mem.prof
     # provide a volume here to persist bacnet settings
     volumes:
@@ -83,7 +83,7 @@ services:
   # Service that manages scanning the local network for BACnet devices
   scan-service:
     image: normalframework/nf:develop
-    env_file: .env.dev
+    env_file: .env.1.2
     command: nf bacnet-scan
     networks:
       - internal
@@ -94,7 +94,7 @@ services:
   # Service that collects data by polling configured points.
   poll-service:
     image: normalframework/nf:develop
-    env_file: .env.dev
+    env_file: .env.1.2
     command: nf bacnet-poll 
     networks:
       - internal
@@ -105,7 +105,7 @@ services:
   # the points database
   point-service:
     image: normalframework/nf:develop
-    env_file: .env.dev
+    env_file: .env.1.2
     command: nf point
     networks:
       - internal
@@ -124,21 +124,21 @@ services:
   # Tracks the state of devices in the network
   bacnet-status-service:
     image: normalframework/nf:develop
-    env_file: .env.dev
+    env_file: .env.1.2
     command: nf hpl-status
     networks:
       - internal
 
   platform-service:
     image: normalframework/nf:develop
-    env_file: .env.dev
+    env_file: .env.1.2
     command: nf platform
     networks:
       - internal
 
   template-service:
     image: normalframework/nf:develop
-    env_file: .env.dev
+    env_file: .env.1.2
     command: nf template
     networks:
       - internal
@@ -147,7 +147,7 @@ services:
 
   graph-service:
     image: normalframework/nf-ontology:develop
-    env_file: .env.dev
+    env_file: .env.1.2
     networks:
       - internal
     environment:
@@ -155,10 +155,10 @@ services:
       
 
   # Create sparkplug services to send data out using MQTT
-  #  See the configuration guide on docs.normal.dev for example setup.
+  #  See the configuration guide on docs.normal.1.2 for example setup.
   sparkplug-service:
     image: normalframework/nf:develop
-    env_file: .env.dev
+    env_file: .env.1.2
     command: nf sparkplug
     networks:
       - internal
