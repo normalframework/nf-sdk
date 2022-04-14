@@ -29,7 +29,7 @@ services:
       - "80:8080"
       - "443:4443"
     environment:
-      - BACNET_SERVICE_HOST=10.114.104.1
+      - BACNET_SERVICE_ADDRESS=10.114.104.1:9090
     volumes:
       - "tailscale-certs:/tailscale-certs"
 
@@ -53,7 +53,7 @@ services:
     depends_on:
       - redis
     environment:
-      - BACNET_SERVICE_HOST=10.114.104.1
+      - BACNET_SERVICE_ADDRESS=10.114.104.1:9090
 
   bacnet-service:
     image: normalframework/nf:1.2.1
