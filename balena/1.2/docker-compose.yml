@@ -1,0 +1,216 @@
+version: "2"
+
+volumes:
+  redis-db:
+  jupyter-notebooks:
+  spool-data:
+  spool-errors:
+  spool-commands:
+  service-config:
+  tailscale:
+  tailscale-certs:
+  templates:
+
+services:
+  redis:
+    image: normalframework/redis:1.2.1
+    ports:
+      - "6379:6379"
+    volumes:
+      - "redis-db:/data"
+    networks:
+      - internal
+
+  envoy:
+    image: normalframework/envoy:1.2.1
+    networks:
+      - internal
+    ports:
+      - "80:8080"
+      - "443:4443"
+    environment:
+      - BACNET_SERVICE_ADDRESS=10.114.104.1:9090
+    volumes:
+      - "tailscale-certs:/tailscale-certs"
+
+  tailscale:
+    image: normalframework/tailscale:1.2.1
+    network_mode: host
+    command: tailscaled
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    volumes:
+      - "tailscale:/var/lib"
+      - "tailscale-certs:/tailscale-certs"
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+
+  admin-static:
+    image: normalframework/nf-console:1.2.1
+    networks:
+      - internal
+    depends_on:
+      - redis
+    environment:
+      - BACNET_SERVICE_ADDRESS=10.114.104.1:9090
+
+  bacnet-service:
+    image: normalframework/nf:1.2.1
+    command: nf bacnet-hpl /etc/bacnet/config.pbjson
+    network_mode: host
+    volumes:
+      - "service-config:/etc/bacnet"
+    depends_on:
+      - redis
+    environment:
+      - REDIS_ADDRESS=redis:6379
+      - SERVICE_BIND_ADDRESS=10.114.104.1:9090
+      - BACNET_SERVICE_ADDRESS=10.114.104.1:9090
+      - SCAN_SERVICE_ADDRESS=scan-service:9090
+      - POLL_SERVICE_ADDRESS=poll-service:9090
+      - POINT_SERVICE_ADDRESS=point-service:9090
+
+  bacnet-status-service:
+    image: normalframework/nf:1.2.1
+    command: nf hpl-status
+    networks:
+      - internal
+    depends_on:
+      - redis
+      - point-service
+    environment:
+      - SERVICE_BIND_ADDRESS=:9090
+      - REDIS_ADDRESS=redis:6379
+      - BACNET_SERVICE_ADDRESS=10.114.104.1:9090
+      - SCAN_SERVICE_ADDRESS=scan-service:9090
+      - POLL_SERVICE_ADDRESS=poll-service:9090
+      - POINT_SERVICE_ADDRESS=point-service:9090
+
+  scan-service:
+    image: normalframework/nf:1.2.1
+    command: nf bacnet-scan
+    networks:
+      - internal
+    depends_on:
+      - redis
+      - point-service
+    environment:
+      - SERVICE_BIND_ADDRESS=:9090
+      - REDIS_ADDRESS=redis:6379
+      - BACNET_SERVICE_ADDRESS=10.114.104.1:9090
+      - SCAN_SERVICE_ADDRESS=scan-service:9090
+      - POLL_SERVICE_ADDRESS=poll-service:9090
+      - POINT_SERVICE_ADDRESS=point-service:9090
+
+  poll-service:
+    image: normalframework/nf:1.2.1
+    command: nf bacnet-poll 
+    networks:
+      - internal
+    depends_on:
+      - redis
+      - point-service
+    environment:
+      - REDIS_ADDRESS=redis:6379
+      - BACNET_SERVICE_ADDRESS=10.114.104.1:9090
+      - SCAN_SERVICE_ADDRESS=scan-service:9090
+      - POLL_SERVICE_ADDRESS=poll-service:9090
+      - POINT_SERVICE_ADDRESS=point-service:9090
+
+  point-service:
+    image: normalframework/nf:1.2.1
+    command: nf point
+    networks:
+      - internal
+    depends_on:
+      - redis
+    ports:
+      - "9093:9093"
+    environment:
+      - SERVICE_BIND_ADDRESS=:9090
+      - REDIS_ADDRESS=redis:6379
+      - BACNET_SERVICE_ADDRESS=10.114.104.1:9090
+      - SCAN_SERVICE_ADDRESS=scan-service:9090
+      - POLL_SERVICE_ADDRESS=poll-service:9090
+      - POINT_SERVICE_ADDRESS=point-service:9090
+      - DATA_LOG_DIR=/data
+      - ERROR_LOG_DIR=/errors
+    volumes:
+      - "spool-data:/data"
+      - "spool-errors:/errors"
+
+
+  sparkplug-service:
+    image: normalframework/nf:1.2.1
+    command: nf sparkplug
+    networks:
+      - internal
+    depends_on:
+      - point-service
+    volumes:
+      - "service-config:/versions"
+    environment:
+      - VERSION_STORE_DIR=/versions
+      - POINT_SERVICE_ADDRESS=point-service:9090
+
+  sparkplug-service-2:
+    image: normalframework/nf:1.2.1
+    command: nf sparkplug
+    networks:
+      - internal
+    depends_on:
+      - point-service
+    volumes:
+      - "service-config:/versions"
+    environment:
+      - VERSION_STORE_DIR=/versions
+      - POINT_SERVICE_ADDRESS=point-service:9090
+
+  platform-service:
+    image: normalframework/nf:1.2.1
+    command: nf platform
+    networks:
+      - internal
+ 
+  command-service:
+    image: normalframework/nf:1.2.1
+    command: nf command
+    networks:
+      - internal
+    depends_on:
+      - point-service
+      - bacnet-service
+      - redis
+    volumes:
+      - "spool-commands:/commands"
+    environment:
+      - SERVICE_BIND_ADDRESS=:9090
+      - REDIS_ADDRESS=redis:6379
+      - POINT_SERVICE_ADDRESS=point-service:9090
+      - BACNET_SERVICE_ADDRESS=10.114.104.1:9090
+      - COMMAND_LOG_DIR=/command     
+
+  template-service:
+    image: normalframework/nf:1.2.1
+    command: nf template
+    networks:
+      - internal
+    depends_on:
+      - point-service
+      - redis
+    volumes:
+      - "templates:/templates"
+    environment:
+      - SERVICE_BIND_ADDRESS=:9090
+      - REDIS_ADDRESS=redis:6379
+      - POINT_SERVICE_ADDRESS=point-service:9090
+      - TEMPLATE_DIR=/templates
+      
+networks:
+  # the services all talk on this network which is only exposed through envoy
+  internal:
+
+  # the BACnet router routes between this bridge on the host and the
+  # "real" physical interface.
+
