@@ -178,15 +178,20 @@ restore, and then upgrade again.
                              compression=zipfile.ZIP_DEFLATED) as archive:
             # save the info -- these aren't restored but for information
             info = self.save_endpoint("/api/v1/platform/info", "info.jsonl", archive)
-            log.info("backing up %s", info.get("siteName"))
+            log.info("backing up %s at %s", info.get("siteName"), self.base)
 
             # save the layers -- these aren't restored
             layers = self.save_endpoint("/api/v1/point/layers", "layers.jsonl", archive)
             # save the bacnet settings
             self.save_endpoint("/api/v1/bacnet/configuration", "bacnet.jsonl", archive)
+            log.info("archived BACnet datalink configuration")
             # save the templates
-            self.save_endpoint("/api/v1/templates", "templates.jsonl",
+            templates = self.save_endpoint("/api/v1/templates", "templates.jsonl",
                                archive, content=True)
+            log.info("archived up %d templates", len(templates['templates']))
+
+            config = self.save_endpoint("/api/v1/point/configkeys", "configkeys.jsonl", archive)
+            log.info("archived %d configuration keys", len(config["values"]))
 
             # download the point database for each base layer, and add
             # all of the points
@@ -212,6 +217,7 @@ restore, and then upgrade again.
                             fp.write("\n".encode("utf-8"))
                             pointcount += 1
                     log.info("archived count=%d layer=%s", pointcount, l["name"])
+            log.info("archive written to %s", args.output)
 
 class RestoreCommand(Subcommand):
     name = "restore"
@@ -228,6 +234,8 @@ class RestoreCommand(Subcommand):
                             help="don't restore saved point database")
         parser.add_argument("--no-bacnet-settings", action="store_true", default=False,
                             help="don't restore bacnet settings")
+        parser.add_argument("--no-config", action="store_true", default=False,
+                            help="don't resture UI configuration")
 
     def restore_bacnet_settings(self, archive):
         """Restore the BACnet settings (datalink, BBMD, etc)."""
@@ -235,6 +243,15 @@ class RestoreCommand(Subcommand):
         with archive.open("bacnet.jsonl", "r") as fp:
             settings = json.load(fp)
         self.post("/api/v1/bacnet/configuration", settings)
+
+    def restore_config(self, archive):
+        with archive.open("configkeys.jsonl", "r") as fp:
+            config = json.load(fp)
+        log.info("restoring %d configuration settings", len(config["values"]))
+        for k, v in config["values"].items():
+            self.post("/api/v1/point/configkeys", {
+                "key": k,
+                "value": v })
 
     def restore_templates(self, archive):
         """Restore all of the templates, and reenable any that were running
@@ -298,6 +315,8 @@ class RestoreCommand(Subcommand):
                 self.restore_bacnet_settings(archive)
             if not args.no_templates:
                 self.restore_templates(archive)
+            if not args.no_config:
+                self.restore_config(archive)
             if not args.no_points:
                 self.restore_points(archive)
 
