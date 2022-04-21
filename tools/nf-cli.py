@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 #!/usr/bin/env python3
 """Normal Framework CLI utils
 
@@ -11,22 +10,12 @@ call the API directly.
 import os
 import sys
 import logging
-=======
-"""
-Normal Framework CLI utils.
-
-Copyright (c) 2022 Normal Software Inc.
-"""
-
-import sys
->>>>>>> master
 import argparse
 import urllib.request
 import urllib.parse
 import time
 import json
 import collections
-<<<<<<< HEAD
 import zipfile
 
 # page size to get points from points api
@@ -65,8 +54,6 @@ class Subcommand(object):
                     return json.load(response)
                 else:
                     break
-=======
->>>>>>> master
 
 def errorString(err):
     err = err["error"]
@@ -80,7 +67,6 @@ def errorString(err):
 def h1(title):
     print ("\n" + title + "\n" + "=" * len(title))
 
-<<<<<<< HEAD
 class ErrorsCommand(Subcommand):
     name = "errors"
     
@@ -89,23 +75,6 @@ class ErrorsCommand(Subcommand):
         self.layer = args.layer
         self.verbose = args.verbose
         
-=======
-class NFSite(object):
-    def __init__(self, base, layer):
-        self.base = base.rstrip("/")
-        self.layer = layer
-
-    def get(self, api, **params):
-        qs = urllib.parse.urlencode(params)
-        # print(self.base + api, qs)
-        req = urllib.request.Request(self.base + api + "?" + qs)
-        with urllib.request.urlopen(req) as response:
-            if response.code == 200:
-                data = json.load(response)
-                return data
-    
-    def summarize_errors(self, verbose=False):
->>>>>>> master
         # last 15 minutes
         first_version = "{}-0".format(int(time.time() * 1000) - (900 * 1000 * 1))
         # fetch the error log from the first version and summarize it
@@ -160,11 +129,7 @@ class NFSite(object):
                            for (k, v) in sorted(device_error_kinds[d].items())))
             ))
 
-<<<<<<< HEAD
             if not args.verbose:
-=======
-            if not verbose:
->>>>>>> master
                 continue
             for i, u in enumerate(device_object_counts[d].keys()):
                 print ("\t\t" + u)
@@ -181,7 +146,6 @@ class NFSite(object):
         for mac, count in sorted(mac_counts.items(), key=lambda x: x[1]):
             print ("{0: <47}| {1: <13}".format(mac, count))
 
-<<<<<<< HEAD
 class BackupCommand(Subcommand):
     """Download and save the state of a NF instance.  This means
 
@@ -351,18 +315,10 @@ if __name__ == '__main__':
     parser.add_argument("command", metavar="command",
                         help="subcommand: [{}]".format('|'.join((c.name for c in subcommands))))
     parser.add_argument("--url", default=os.getenv("NFURL", "http://localhost:8080"),
-=======
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser("Normal Framework CLI")
-    parser.add_argument("command", metavar="command",
-                        help="subcommand: [errors]")
-    parser.add_argument("--url", default="http://localhost:8080",
->>>>>>> master
                         help="base URL of NF site")
     parser.add_argument("--layer", default="hpl:bacnet:1",
                         help="layer name to query")
     parser.add_argument("--verbose", "-v", default=False, action="store_true",
-<<<<<<< HEAD
                         help="print verbose logs")
     if len(sys.argv) < 2:
         parser.print_help()
@@ -384,19 +340,4 @@ if __name__ == '__main__':
         level=logging.DEBUG if args.verbose else logging.INFO)
 
     command.run(args)
-=======
-                        help="layer name to query")
-    args = parser.parse_args()
-    site = NFSite(args.url, args.layer)
-
-    # dispatch commands
-    if args.command == 'errors':
-        site.summarize_errors(args.verbose)
-    else:
-        if sys.stderr.isatty():
-            sys.stderr.write("Invalid command: '" + args.command + "'\n\n")
-            parser.print_help()
-        sys.exit(1)
-
->>>>>>> master
 
