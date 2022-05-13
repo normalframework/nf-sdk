@@ -26,16 +26,18 @@ services:
   # See envoy.yaml in this conf as a starting point to adapt to your
   #  own configuration.
   nf:
-    image: normalframework.azurecr.io/normalframework/nf-full:develop
+    image: normalframework.azurecr.io/normalframework/nf-full:1.4
     network_mode: host
     depends_on:
       - redis
-    environment:
-      - HTTP_URL=http://localhost:8001
+    volumes:
+      - /tmp/nf:/var
 
   # Most persistent data is in redis.  This is essentially an
   #  unmodified upstream with RediSearch and RedisTimeseries installed.
   redis:
-    image: normalframework.azurecr.io/normalframework/redis:develop
+    image: normalframework.azurecr.io/normalframework/redis:1.4
     ports:
       - "6379:6379"
+    volumes:
+      - /tmp/nf-redis:/data

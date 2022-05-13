@@ -11,7 +11,7 @@
               "registryCredentials": {
 		  "normalframework": {
 		      "username": "normalframework",
-		      "password": "EzLKvvSYhxJnj7BEKaQSobi3DXyoid/Z",
+		      "password": "",
 		      "address": "normalframework.azurecr.io"
 		  }
 	      }
@@ -47,7 +47,7 @@
             "status": "running",
             "restartPolicy": "always",
             "settings": {
-		"image": "normalframework.azurecr.io/normalframework/nf-full:b3f3000c",
+		"image": "normalframework.azurecr.io/normalframework/nf-full:1.4",
 		"createOptions": "{\"NetworkingConfig\": {\"EndpointsConfig\": {\"host\": {}}}, \"HostConfig\": {\"NetworkMode\": \"host\", \"CapDrop\": []}}"
 
             }
@@ -58,7 +58,7 @@
             "status": "running",
               "restartPolicy": "always",
             "settings": {
-		"image": "normalframework.azurecr.io/normalframework/redis:develop",
+		"image": "normalframework.azurecr.io/normalframework/redis:1.4",
 		"createOptions": "{\"HostConfig\": {\"CapDrop\": [], \"PortBindings\":{\"6379/tcp\":[{\"HostPort\":\"6379\"}]} }}"
             }
           }

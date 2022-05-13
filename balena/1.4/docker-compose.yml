@@ -13,14 +13,14 @@ volumes:
 
 services:
   redis:
-    image: normalframework.azurecr.io/normalframework/redis:develop
+    image: normalframework/redis:1.4
     ports:
       - "6379:6379"
     volumes:
       - "redis-db:/data"
 
   nf:
-    image: normalframework.azurecr.io/normalframework/nf-full:develop
+    image: normalframework/nf-full:1.4
     network_mode: host
     environment:
       - PORT=80
@@ -36,7 +36,7 @@ services:
       - "templates:/var/nf/templates"
 
   tailscale:
-    image: normalframework.azurecr.io/normalframework/tailscale:develop
+    image: normalframework/tailscale:1.4
     network_mode: host
     command: tailscaled
     devices:
