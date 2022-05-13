@@ -1,0 +1,41 @@
+#      ___           ___   
+#     /__/\         /  /\  
+#     \  \:\       /  /:/_ 
+#      \  \:\     /  /:/ /\
+#  _____\__\:\   /  /:/ /:/
+# /__/::::::::\ /__/:/ /:/ 
+# \  \:\~~\~~\/ \  \:\/:/  
+#  \  \:\  ~~~   \  \::/   
+#   \  \:\        \  \:\   
+#    \  \:\        \  \:\  
+#     \__\/         \__\/
+#     
+#
+
+# Welcome to the NF example docker-compose.  This file should stand up
+# a mostly functioning NF instance on your desktop.  Before running
+# you should just check a few things:
+#  1. several containers need a writable volume, which this file puts in /tmp by default
+#  2. if the BACnet service fails to start, you may need to specify
+#   which interface to use in its environment.
+
+version: "2.2"
+services:
+
+  # this is the load balancer through which you access all APIs and the console.
+  # See envoy.yaml in this conf as a starting point to adapt to your
+  #  own configuration.
+  nf:
+    image: normalframework.azurecr.io/normalframework/nf-full:develop
+    network_mode: host
+    depends_on:
+      - redis
+    environment:
+      - HTTP_URL=http://localhost:8001
+
+  # Most persistent data is in redis.  This is essentially an
+  #  unmodified upstream with RediSearch and RedisTimeseries installed.
+  redis:
+    image: normalframework.azurecr.io/normalframework/redis:develop
+    ports:
+      - "6379:6379"
