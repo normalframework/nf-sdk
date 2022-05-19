@@ -19,8 +19,10 @@
 #  2. if the BACnet service fails to start, you may need to specify
 #   which interface to use in its environment.
 #
-# This compose file runs entirely in a docker internal network, along
-# with a simple BACnet simulator.
+# This file runs in host networking mode to allow you to discovery
+# BACnet devices on your local network.
+#
+# This will only work on Linux; host networking is not supported in Docker for Mac.
 
 version: "2.2"
 services:
@@ -29,14 +31,9 @@ services:
   # and management console.
   nf:
     image: normalframework.azurecr.io/normalframework/nf-full:1.4
-    ports:
-      - "8080:8080"
-    networks:
-      - internal
+    network_mode: host
     depends_on:
       - redis
-    environment:
-      - REDIS_ADDRESS=redis:6379
 # ucomment this to persist various settings
 #    volumes:
 #      - /tmp/nf:/var
@@ -45,20 +42,11 @@ services:
   #  unmodified upstream with RediSearch and RedisTimeseries installed.
   redis:
     image: normalframework.azurecr.io/normalframework/redis:1.4
-    networks:
-      - internal
+    ports:
+      - "6379:6379"
     volumes:
       - /tmp/nf-redis:/data
 
-  bacnet-simulator:
-    image: stevedh/bactools
-    command: server
-    
-    networks:
-      - internal
-    environment:
-      - BACNET_IP_DEBUG=1
-      
 networks:
   internal:
   
