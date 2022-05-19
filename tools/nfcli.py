@@ -6,6 +6,25 @@ Copyright (c) 2022 Normal Software Inc.
 The goal of this utility is to interact with a NF instance from the
 command line, to allow scripting and automation without the need to
 call the API directly.
+
+Commands
+--------
+
+ * Backup: create a zip archive of all "hard" state in an NF instance, 
+   including points database; templates; BACnet settings; BACnet objects;
+ * Restore: update a new NF instance with a backup
+ * Find points in an NF instance and apply bulk operations like deleting 
+   or changing the polling rate of those points
+ * Examine recent errors
+
+Installation
+------------
+
+The only dependency is a working Python 3 installation.  nfcli
+intentionally only uses the python standard library, and is just one
+file.  Copy it onto a machine with python and you should be able to
+use it.
+
 """
 import os
 import sys
@@ -17,6 +36,8 @@ import time
 import json
 import collections
 import zipfile
+import re
+import csv
 
 # page size to get points from points api
 CHUNKSZ=500
@@ -41,6 +62,15 @@ class Subcommand(object):
                 log.debug("POST code=%d url=%s", response.code, api)
             else:
                 log.warning("POST code=%d url=%s", response.code, api)
+
+    def delete(self, api, data):
+        req = urllib.request.Request(self.base + api, json.dumps(data).encode('utf-8'), headers={
+            'Content-type': 'application/json'}, method='DELETE')
+        with urllib.request.urlopen(req) as response:
+            if response.code == 200:
+                log.debug("DELETE code=%d url=%s", response.code, api)
+            else:
+                log.warning("DELETE code=%d url=%s", response.code, api)
                                      
     
     def get(self, api, **params):
@@ -71,7 +101,6 @@ class ErrorsCommand(Subcommand):
     name = "errors"
     
     def run(self, args):
-        self.base = args.url.rstrip("/")
         self.layer = args.layer
         self.verbose = args.verbose
         
@@ -175,7 +204,6 @@ restore, and then upgrade again.
         
 
     def run(self, args):
-        self.base = args.url
 
         # all of the archived endpoints go into one zip archive
         with zipfile.ZipFile(args.output, mode="w",
@@ -313,7 +341,6 @@ class RestoreCommand(Subcommand):
         log.info("restored %d points", count)
 
     def run(self, args):
-        self.base = args.url
         with zipfile.ZipFile(args.backup, mode="r") as archive:
             info = json.load(archive.open("info.jsonl"))
             version = info.get("version", None)
@@ -342,12 +369,126 @@ class RestoreCommand(Subcommand):
             # layers are not restored now, only the default layers
             # will exist.
 
+def escape_tag(v):
+    return re.sub(r"([/:#_\.\-\%\&\^\ \{\}\(\)\[\\\\`\~|\]\!\@\*\,\<\>\;\'\"])", r"\\\1", v)
+
+
+class FindCommand(Subcommand):
+    name = "find"
+
+    def add_arguments(self, parser):
+        parser.add_argument("filters", metavar="N", nargs="*", default=['*'],
+                            help="property filters to apply, in the form of key=value")
+        parser.add_argument("--query", "-q", help="query to apply to find", default="")
+        parser.add_argument("--json", help="output json", default=False, action="store_true")
+        parser.add_argument("--csv", help="output CSV", default=False, action="store_true")
+        parser.add_argument("--delete", "-d", dest="delete", action="store_true", default=False,
+                            help="delete matching points")
+        parser.add_argument("--period", "-p", type=int, default=None,
+                            help="update polling period for matching points")
+
+    def build_query(self, args):
+        """Build a query string from the command line
+        """
+        self.layers = self.get("/api/v1/point/layers/" + args.layer)
+        if len(self.layers.get("layers", [])) != 1:
+            raise Exception("Layer Not found")
+        types = (dict(zip(self.layers["layers"][0]["components"], self.layers["layers"][0]["componentTypes"])))
+        types["uuid"] = "TAG"
+        types["period"] = "NUMERIC"
+        if "*" in args.filters and len(args.filters) == 1:
+            return "*"
+        q = ""
+        for fltr in args.filters:
+            splt = fltr.split("=")
+            if len(splt) < 2:
+                raise ValueError("Invalid filter: " + fltr)
+            k, v = splt[0], "=".join(splt[1:])
+            if types.get(k):
+                t = types.get(k)
+            elif types.get("attr_" + k):
+                t = types.get("attr_" + k)
+                k = "attr_" + k
+            else:
+                raise ValueError("Invalid filter: " + k + " is not indexed")
+            if t == "TAG":
+                q += " @" + k + ":{" + escape_tag(v) + "}"
+            elif t == "TEXT":
+                q += " @" + k + ":\"" + escape_tag(v) + "\""
+            elif t == "NUMERIC":
+                q += " @" + k + ":[" + str(int(v)) + "," + str(int(v)) + "]"
+        return q
+
+    def output_csv(self, page, out, header=False):
+        cols = ["uuid", "period"] + [
+                x[5:] if x.startswith("attr_") else x
+                for x in 
+                self.layers["layers"][0]["components"]]
+        if header:
+            out.writerow(cols)
+        for p in page["points"]:
+            row = [p["uuid"], p.get("period", "")]
+            row += [p["attrs"].get(a, "") for a in cols[2:]]
+            out.writerow(row)
+        
+    def run(self, args):
+        # build the redis query
+        query = args.query + self.build_query(args)
+        count, offset = CHUNKSZ, 0
+        if args.csv:
+            out = csv.writer(sys.stdout)
+        uuids = []
+
+        # iterate over result pages and save the matching uuids
+        while count == CHUNKSZ:
+            page = self.get("/api/v1/point/points", query=query, page_size=CHUNKSZ, page_offset=offset)
+            offset += CHUNKSZ
+            count = len(page["points"])
+            for p in page["points"]:
+                uuids.append(p["uuid"])
+            if args.csv:
+                self.output_csv(page, out, header=(offset == CHUNKSZ))
+            elif args.json:
+                for p in page["points"]:
+                    json.dump(p, sys.stdout)
+                    sys.stdout.write("\n")
+        if not args.json and not args.csv and not args.delete and args.period is None:
+            log.info ("found " + str(len(uuids)) + " point" + ("" if len(uuids) == 1 else "s"))
+        
+        if args.period is not None:
+            if sys.stdin.isatty():
+                x = input("Really update polling rate for {} points? [y/N]: ".format(len(uuids)))
+                if not x.lower().strip() == "y":
+                    return
+            for i in range(0, len(uuids), CHUNKSZ):
+                self.post("/api/v1/point/points", {
+                    "points": [{
+                        "layer": args.layer,
+                        "uuid": u,
+                        "period": {
+                            "seconds": args.period,
+                            },
+                        } for u in uuids[i:i+CHUNKSZ]]
+                    })
+            log.info("updated polling rate for {} points".format(len(uuids)))
+
+        if args.delete:
+            if sys.stdin.isatty():
+                x = input("Really delete {} points? [y/N]: ".format(len(uuids)))
+                if not x.lower().strip() == "y":
+                    return
+            for i in range(0, len(uuids), CHUNKSZ):
+                self.delete("/api/v1/point/points", {
+                    "layer": args.layer,
+                    "uuids": uuids[i:i+CHUNKSZ]})
+
 
 if __name__ == '__main__':
     subcommands = [
         ErrorsCommand,
         BackupCommand,
         RestoreCommand,
+        FindCommand
     ]
     parser = argparse.ArgumentParser("Normal Framework CLI")
     parser.add_argument("command", metavar="command",
@@ -373,6 +514,7 @@ if __name__ == '__main__':
     command.add_arguments(parser)
 
     args = parser.parse_args()
+    command.base = args.url.rstrip("/")
     logging.basicConfig(
         format='%(asctime)s %(levelname)-8s %(message)s',
         level=logging.DEBUG if args.verbose else logging.INFO)
