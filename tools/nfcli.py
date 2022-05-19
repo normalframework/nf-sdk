@@ -164,10 +164,14 @@ restore, and then upgrade again.
                             help="filename to output to")
 
     def save_endpoint(self, endpoint, filename, archive, **kwargs):
-        with archive.open(filename, mode="w") as fp:
-            data = self.get(endpoint, **kwargs)
-            fp.write(json.dumps(data).encode('utf-8'))
-            return data
+        try:
+            with archive.open(filename, mode="w") as fp:
+                data = self.get(endpoint, **kwargs)
+                fp.write(json.dumps(data).encode('utf-8'))
+                return data
+        except Exception as e:
+            log.warning("Error fetching resource " + endpoint + ": " + str(e))
+            return {}
         
 
     def run(self, args):
@@ -192,6 +196,9 @@ restore, and then upgrade again.
 
             config = self.save_endpoint("/api/v1/point/configkeys", "configkeys.jsonl", archive)
             log.info("archived %d configuration keys", len(config["values"]))
+
+            objects = self.save_endpoint("/api/v1/bacnet/local/", "bacnet-objects.jsonl", archive)
+            log.info("archived %d local bacnet objects", len(objects.get("objects", [])))
 
             # download the point database for each base layer, and add
             # all of the points
@@ -243,6 +250,14 @@ class RestoreCommand(Subcommand):
         with archive.open("bacnet.jsonl", "r") as fp:
             settings = json.load(fp)
         self.post("/api/v1/bacnet/configuration", settings)
+
+    def restore_bacnet_objects(self, archive):
+        """Restore all local BACnet objects"""
+        log.info("restoring local BACnet objects")
+        with archive.open("bacnet-objects.jsonl", "r") as fp:
+            objects = json.load(fp)
+        for obj in objects.get("objects", []):
+            self.post("/api/v1/bacnet/local", obj)
 
     def restore_config(self, archive):
         with archive.open("configkeys.jsonl", "r") as fp:
@@ -313,6 +328,10 @@ class RestoreCommand(Subcommand):
 
             if not args.no_bacnet_settings:
                 self.restore_bacnet_settings(archive)
+                try:
+                    self.restore_bacnet_objects(archive)
+                except Exception as e:
+                    log.warning("error restoring BACnet local objects: " + str(e))
             if not args.no_templates:
                 self.restore_templates(archive)
             if not args.no_config:
