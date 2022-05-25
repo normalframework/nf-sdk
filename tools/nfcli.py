@@ -400,10 +400,15 @@ class FindCommand(Subcommand):
             return "*"
         q = ""
         for fltr in args.filters:
+            invert = ""
             splt = fltr.split("=")
             if len(splt) < 2:
                 raise ValueError("Invalid filter: " + fltr)
             k, v = splt[0], "=".join(splt[1:])
+            if k[-1] == "!":
+                k = k[:-1]
+                print (k)
+                invert = "-" 
             if types.get(k):
                 t = types.get(k)
             elif types.get("attr_" + k):
@@ -411,12 +416,14 @@ class FindCommand(Subcommand):
                 k = "attr_" + k
             else:
                 raise ValueError("Invalid filter: " + k + " is not indexed")
+
+            # add the appropiate query clause
             if t == "TAG":
-                q += " @" + k + ":{" + escape_tag(v) + "}"
+                q += " " + invert + "@" + k + ":{" + escape_tag(v) + "}"
             elif t == "TEXT":
-                q += " @" + k + ":\"" + escape_tag(v) + "\""
+                q += " " + invert + "@" + k + ":\"" + escape_tag(v) + "\""
             elif t == "NUMERIC":
-                q += " @" + k + ":[" + str(int(v)) + "," + str(int(v)) + "]"
+                q += " " + invert + "@" + k + ":[" + str(int(v)) + "," + str(int(v)) + "]"
         return q
 
     def output_csv(self, page, out, header=False):
