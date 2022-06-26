@@ -490,12 +490,154 @@ class FindCommand(Subcommand):
                     "uuids": uuids[i:i+CHUNKSZ]})
 
 
+class ListObjectsCommand(Subcommand):
+    name = "list-objects"
+
+    def as_scalar(self, prop):
+        kinds = ["characterString", "double", "real", "signed", "unsigned", "enumerated", "null", "octetString", "boolean"]
+        for k in kinds:
+            if k in prop:
+                return prop[k]
+        if len(prop["array"]) > 0:
+            return list(map(self.as_scalar, prop["array"]))
+        
+    def output_object(self, obj, args):
+        oid = to_objectid(obj["objectId"]["objectType"]) + "." + str(obj["objectId"]["instance"])
+        output = {"object_id": oid}
+        
+        for prop in obj["props"]:
+            output[prop["property"].lower()[5:]] = self.as_scalar(prop["value"])
+
+        return output
+
+    def run(self, args):
+            object_list = self.get("/api/v1/bacnet/local")
+            headers = set([])
+            for o in object_list["objects"]:
+                row = self.output_object(o, args)
+                headers.update(row.keys())
+            headers = list(headers)
+            sorted_headers = []
+            for h in ("object_id", "object_name", "description", "units"):
+                if h in headers:
+                    sorted_headers.append(h)
+                    del headers[headers.index(h)]
+            headers.sort()
+            sorted_headers.extend(headers)
+            print(sorted_headers)
+
+            writer = csv.DictWriter(sys.stdout, fieldnames=sorted_headers)
+            writer.writeheader()
+            for o in object_list["objects"]:
+                row = self.output_object(o, args)
+                writer.writerow(row)
+
+class DeleteObjectCommand(Subcommand):
+    name = "delete-object"
+    
+    def add_arguments(self, parser):
+        parser.add_argument("object_id", metavar="object_id", nargs="+", default=[],
+                            help="object ids to delete.  for instance, bv.1")
+    
+    def run(self, args):
+        for oid in args.object_id:
+            try:
+                otype, inst = oid.split(".")
+                int(inst)
+            except:
+                print ("Invalid object identifier: ", oid)
+                continue
+            full_type = lookup_object_type(otype)
+            if not full_type:
+                print ("Invalid object type: ", otype)
+                continue
+            try:
+                (self.delete("/api/v1/bacnet/local/{}/{}".format(full_type, inst), {}))
+            except urllib.error.HTTPError as e:
+                print ("Error deleting", oid, ":", e)
+
+
+
+def lookup_object_type(otype):
+    for name, e in object_types.items():
+        if to_objectid(name) == otype:
+            return name
+
+def to_objectid(oid):
+    return ''.join(re.findall("\_([a-z])", oid.lower()))
+
+object_types = {
+    "OBJECT_ANALOG_INPUT" : 0,
+    "OBJECT_ANALOG_OUTPUT" : 1,
+    "OBJECT_ANALOG_VALUE" : 2,
+    "OBJECT_BINARY_INPUT" : 3,
+    "OBJECT_BINARY_OUTPUT" : 4,
+    "OBJECT_BINARY_VALUE" : 5,
+    "OBJECT_CALENDAR" : 6,
+    "OBJECT_COMMAND" : 7,
+    "OBJECT_DEVICE" : 8,
+    "OBJECT_EVENT_ENROLLMENT" : 9,
+    "OBJECT_FILE" : 10,
+    "OBJECT_GROUP" : 11,
+    "OBJECT_LOOP" : 12,
+    "OBJECT_MULTI_STATE_INPUT" : 13,
+    "OBJECT_MULTI_STATE_OUTPUT" : 14,
+    "OBJECT_NOTIFICATION_CLASS" : 15,
+    "OBJECT_PROGRAM" : 16,
+    "OBJECT_SCHEDULE" : 17,
+    "OBJECT_AVERAGING" : 18,
+    "OBJECT_MULTI_STATE_VALUE" : 19,
+    "OBJECT_TRENDLOG" : 20,
+    "OBJECT_LIFE_SAFETY_POINT" : 21,
+    "OBJECT_LIFE_SAFETY_ZONE" : 22,
+    "OBJECT_ACCUMULATOR" : 23,
+    "OBJECT_PULSE_CONVERTER" : 24,
+    "OBJECT_EVENT_LOG" : 25,
+    "OBJECT_GLOBAL_GROUP" : 26,
+    "OBJECT_TREND_LOG_MULTIPLE" : 27,
+    "OBJECT_LOAD_CONTROL" : 28,
+    "OBJECT_STRUCTURED_VIEW" : 29,
+    "OBJECT_ACCESS_DOOR" : 30,
+    "OBJECT_TIMER" : 31,
+    "OBJECT_ACCESS_CREDENTIAL" : 32,      
+    "OBJECT_ACCESS_POINT" : 33,
+    "OBJECT_ACCESS_RIGHTS" : 34,
+    "OBJECT_ACCESS_USER" : 35,
+    "OBJECT_ACCESS_ZONE" : 36,
+    "OBJECT_CREDENTIAL_DATA_INPUT" : 37,  
+    "OBJECT_NETWORK_SECURITY" : 38,       
+    "OBJECT_BITSTRING_VALUE" : 39,        
+    "OBJECT_CHARACTERSTRING_VALUE" : 40,  
+    "OBJECT_DATE_PATTERN_VALUE" : 41,     
+    "OBJECT_DATE_VALUE" : 42,     
+    "OBJECT_DATETIME_PATTERN_VALUE" : 43, 
+    "OBJECT_DATETIME_VALUE" : 44, 
+    "OBJECT_INTEGER_VALUE" : 45,  
+    "OBJECT_LARGE_ANALOG_VALUE" : 46,     
+    "OBJECT_OCTETSTRING_VALUE" : 47,      
+    "OBJECT_POSITIVE_INTEGER_VALUE" : 48, 
+    "OBJECT_TIME_PATTERN_VALUE" : 49,     
+    "OBJECT_TIME_VALUE" : 50,     
+    "OBJECT_NOTIFICATION_FORWARDER" : 51, 
+    "OBJECT_ALERT_ENROLLMENT" : 52,       
+    "OBJECT_CHANNEL" : 53,        
+    "OBJECT_LIGHTING_OUTPUT" : 54,        
+    "OBJECT_BINARY_LIGHTING_OUTPUT" : 55, 
+    "OBJECT_NETWORK_PORT" : 56,   
+    "OBJECT_ELEVATOR_GROUP" : 57,   
+    "OBJECT_ESCALATOR" : 58,   
+    "OBJECT_LIFT" : 59,   
+    "OBJECT_STAGING" : 60,  
+}
+
 if __name__ == '__main__':
     subcommands = [
         ErrorsCommand,
         BackupCommand,
         RestoreCommand,
-        FindCommand
+        FindCommand,
+        ListObjectsCommand,
+        DeleteObjectCommand
     ]
     parser = argparse.ArgumentParser("Normal Framework CLI")
     parser.add_argument("command", metavar="command",
@@ -527,4 +669,3 @@ if __name__ == '__main__':
         level=logging.DEBUG if args.verbose else logging.INFO)
 
     command.run(args)
-
