@@ -238,8 +238,8 @@ restore, and then upgrade again.
             # download the point database for each base layer, and add
             # all of the points
             with archive.open("points.jsonl", mode="w") as fp:
-                pointcount = 0
                 for l in layers['layers']:
+                    pointcount = 0
                     if l["kind"] != "LAYER_BASE":
                         continue
                     log.debug("backing up layer %s", l.get("name"))
@@ -465,7 +465,7 @@ class FindCommand(Subcommand):
 
         # iterate over result pages and save the matching uuids
         while count == CHUNKSZ:
-            page = self.get("/api/v1/point/points", query=query, page_size=CHUNKSZ, page_offset=offset)
+            page = self.get("/api/v1/point/points", query=query, page_size=CHUNKSZ, page_offset=offset, layer=args.layer)
             offset += CHUNKSZ
             count = len(page["points"])
             for p in page["points"]:
