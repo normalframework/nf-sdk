@@ -573,7 +573,6 @@ class DeleteObjectCommand(Subcommand):
                 print ("Error deleting", oid, ":", e)
 
 class ObjectCommand(Subcommand):
-
     def add_arguments(self, parser):
         parser.add_argument("object_id", metavar="object_id", nargs=1, default="",
                             help="object ids to create.  for instance, bv.1 or av")
@@ -644,6 +643,60 @@ class UpdateObjectCommand(ObjectCommand):
     name = "update-object"
     require_instance = True
     method = "PATCH"
+
+class CsvSubCommand(Subcommand):
+
+    def run(self, args):
+        writer = csv.DictWriter(sys.stdout, fieldnames=self.fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        for p in self.getlist(args):
+            writer.writerow(p)
+        
+
+class GetModbusProfiles(CsvSubCommand):
+    fieldnames= ["profileName", "uuid", "endianness", "highWordFirst"]
+    name = "list-modbus-profiles"
+    
+    def add_arguments(self, parse):
+        parser.add_argument("--maps", help="ouput register maps as well as metadata", default=False, action="store_true")
+
+    def getlist(self, args):
+        return self.get("/api/v1/modbus/profiles")["profiles"]
+
+class GetModbusConnections(CsvSubCommand):
+    name = "list-modbus-connections"
+    fieldnames = ["connectionUuid", "profileUuid", "address", "unitId", "name"]
+    def getlist(self, args):
+        return self.get("/api/v1/modbus/connections")["connections"]
+
+class DeleteModbusConnection(Subcommand):
+    name = "delete-modbus-connection"
+    def add_arguments(self, parser):
+        parser.add_argument("connection_uuid", metavar="connection_uuid", nargs=1, default="",
+                            help="delete a connection")
+
+    def run(self, args):
+        self.delete("/api/v1/modbus/connections", {"connection_uuid": args.connection_uuid[0]})
+
+class CreateModbusConnection(Subcommand):
+    name = "create-modbus-connection"
+    def add_arguments(self, parser):
+        parser.add_argument("--profile", "-p", required=True, help="profile uuid to use")
+        parser.add_argument("--address", "-a", required=True, help="connection string for device; eg, tcp://192.168.1.10:502")
+        parser.add_argument("--unit-id", "-u", default=1, help="modbus unit id")
+        parser.add_argument("--name", "-n", default="", help="connection name")
+
+    def run(self, args):
+        self.post("/api/v1/modbus/connections", {
+            "connection": {
+                "profile_uuid": args.profile,
+                "address": args.address,
+                "name": args.name,
+                "unit_id": args.unit_id,
+                }
+            })
+                  
+
 
 def lookup_object_type(otype):
     for name, e in object_types.items():
@@ -1215,7 +1268,11 @@ if __name__ == '__main__':
         ListObjectsCommand,
         DeleteObjectCommand,
         CreateObjectCommand,
-        UpdateObjectCommand
+        UpdateObjectCommand,
+        GetModbusProfiles,
+        GetModbusConnections,
+        DeleteModbusConnection,
+        CreateModbusConnection,
     ]
     parser = argparse.ArgumentParser("Normal Framework CLI")
     parser.add_argument("command", metavar="command",
