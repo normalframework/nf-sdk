@@ -125,25 +125,38 @@ class ErrorsCommand(Subcommand):
         while True:
             chunk = self.get("/api/v1/point/updates/errors", layer=self.layer,
                              version=first_version, limit=1000, with_metadata=True)
+
             if chunk is None: break
             for error in chunk:
                 uuid_counts[error["uuid"]] += 1
                 try:
                     if error["point"]["attrs"]["type"] == "OBJECT_DEVICE":
                         continue
-                    # save a copy of the metadata for printing later
-                    uuid_meta[error["uuid"]] = error["point"]["attrs"]
+                except KeyError:
+                    pass
+                    
+                # save a copy of the metadata for printing later
+                uuid_meta[error["uuid"]] = error["point"]["attrs"]
+                try:
                     device_id = error["point"]["attrs"]["device_id"] + "," + error["point"]["attrs"]["device_uuid"]
-                    # one error for this device
-                    device_counts[device_id] += 1
-                    # one error for object in the device
-                    device_object_counts[device_id][error["uuid"]] += 1
+                except KeyError:
+                    device_id = error["point"]["attrs"]["device_address"]
+                    
+                # one error for this device
+                device_counts[device_id] += 1
+                # one error for object in the device
+                device_object_counts[device_id][error["uuid"]] += 1
 
+                if error["error"].get("error") is not None:
                     device_error_kinds[device_id][errorString(error["error"])] += 1
                     object_error_kinds[error["uuid"]].add(errorString(error["error"]))
                     device_names[device_id] = error["point"]["attrs"]["device_prop_object_name"]
-                except KeyError:
-                    pass
+                else:
+                    device_error_kinds[device_id][error["error"].get("message")] += 1
+                    object_error_kinds[error["uuid"]].add(error["error"].get("message"))
+                device_names[device_id] = error["point"]["attrs"]["device_address"]
+
+                    
                 try:
                     mac = error["point"]["attrs"]["bacnet_mac"]
                     mac_counts[mac] += 1
