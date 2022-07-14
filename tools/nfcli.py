@@ -521,7 +521,7 @@ class FindCommand(Subcommand):
 
 
 class ListObjectsCommand(Subcommand):
-    name = "list-objects"
+    name = "list-bacnet-objects"
 
     def as_scalar(self, prop):
         kinds = ["characterString", "double", "real", "signed", "unsigned", "enumerated", "null", "octetString", "boolean"]
@@ -562,7 +562,7 @@ class ListObjectsCommand(Subcommand):
                 writer.writerow(row)
 
 class DeleteObjectCommand(Subcommand):
-    name = "delete-object"
+    name = "delete-bacnet-object"
     
     def add_arguments(self, parser):
         parser.add_argument("object_id", metavar="object_id", nargs="+", default=[],
@@ -649,11 +649,11 @@ class ObjectCommand(Subcommand):
             "props": props}, method=self.method)
 
 class CreateObjectCommand(ObjectCommand):
-    name = "create-object"
+    name = "create-bacnet-object"
     method = "POST"
 
 class UpdateObjectCommand(ObjectCommand):
-    name = "update-object"
+    name = "update-bacnet-object"
     require_instance = True
     method = "PATCH"
 
