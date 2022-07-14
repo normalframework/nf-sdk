@@ -670,11 +670,102 @@ class GetModbusProfiles(CsvSubCommand):
     fieldnames= ["profileName", "uuid", "endianness", "highWordFirst"]
     name = "list-modbus-profiles"
     
-    def add_arguments(self, parse):
+    def add_arguments(self, parser):
         parser.add_argument("--maps", help="ouput register maps as well as metadata", default=False, action="store_true")
 
     def getlist(self, args):
         return self.get("/api/v1/modbus/profiles")["profiles"]
+
+class CreateModbusProfile(Subcommand):
+    name = "create-modbus-profile"
+
+    def add_arguments(self, parser):
+        parser.add_argument("registers", metavar="registers", nargs=1,
+                            help="csv register map")
+        parser.add_argument("--name", "-n", help="profile name")
+        parser.add_argument("--uuid", "-u", help="profile uuid")
+
+    def parse_register_type(self, t):
+        try:
+            t = int(t)
+            if not t in [1, 2, 3, 4]:
+                raise ValueError("invalid function code: " + t)
+            else:
+                return t
+        except ValueError:
+            t = t.lower()
+            if t == "coil":
+                return "REGISTER_COIL"
+            elif t == "discrete":
+                return "REGISTER_DISCRETE"
+            elif t == "holding":
+                return "REGISTER_HOLDING"
+            elif t == "input":
+                return "REGISTER_INPUT"
+            else:
+                raise ValueError("invalid register type: " + t)
+
+    def parse_data_type(self, t):
+        if t == "":
+            raise ValueError("Must supply data type")
+        return "DATATYPE_" + t.upper()
+        
+
+    def parse_address(self, a):
+        return int(a)
+
+    def parse_scale(self, s):
+        if not s: return 1.
+        return float(s)
+
+    def parse_offset(self, o):
+        if not o:
+            return 0.
+        return float(o)
+
+
+    def load_profile(self, name):
+        profile = {}
+        def parseVariables(fp):
+            for row in fp:
+                # skip comment rows and look for variables in them.
+                # these can appear anywhere in the file
+                if re.match("^\W*#", row):
+                    v = row.split(":")
+                    if len(v) != 2:
+                        continue
+
+                    profile[v[0].strip(" #")] = v[1].strip()
+                elif row.strip() == "":
+                    continue
+                else:
+                    yield row
+        with open(name, "r") as fp:
+            reader = csv.DictReader(parseVariables(fp))
+            # {"registerType": "REGISTER_HOLDING", "dataType": "DATATYPE_UINT32", "address": 80, "name": "Battery Voltage", "units": "V", "scaleFactor": 0.001}
+
+            registers = []
+            for line in reader:
+                reg = {
+                    "registerType": self.parse_register_type(line.get("Register Type")),
+                    "dataType": self.parse_data_type(line.get("Data Type")),
+                    "address": self.parse_address(line.get("Address")),
+                    "name": line.get("Name", ""),
+                    "units": line.get("Units", ""),
+                    "scaleFactor": self.parse_scale(line.get("Scale Factor")),
+                    "offset": self.parse_offset(line.get("Offset")),
+                    }
+                registers.append(reg)
+            profile["registers"] = registers
+            return profile
+
+    def run(self, args):
+        profile = self.load_profile(args.registers[0])
+        if args.uuid:
+            profile["uuid"] = args.uuid
+        if args.name:
+            profile["profileName"] = args.name
+        self.post("/api/v1/modbus/profiles", {"profile": profile})
 
 class GetModbusConnections(CsvSubCommand):
     name = "list-modbus-connections"
@@ -1283,6 +1374,7 @@ if __name__ == '__main__':
         CreateObjectCommand,
         UpdateObjectCommand,
         GetModbusProfiles,
+        CreateModbusProfile,
         GetModbusConnections,
         DeleteModbusConnection,
         CreateModbusConnection,
