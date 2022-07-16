@@ -684,6 +684,7 @@ class CreateModbusProfile(Subcommand):
                             help="csv register map")
         parser.add_argument("--name", "-n", help="profile name")
         parser.add_argument("--uuid", "-u", help="profile uuid")
+        parser.add_argument("--dry-run", "-d", help="only parse profile file", default=False, action="store_true")
 
     def parse_register_type(self, t):
         try:
@@ -708,7 +709,7 @@ class CreateModbusProfile(Subcommand):
     def parse_data_type(self, t):
         if t == "":
             raise ValueError("Must supply data type")
-        return "DATATYPE_" + t.upper()
+        return "DATATYPE_" + t.upper().strip()
         
 
     def parse_address(self, a):
@@ -746,12 +747,13 @@ class CreateModbusProfile(Subcommand):
 
             registers = []
             for line in reader:
+                print (line)
                 reg = {
                     "registerType": self.parse_register_type(line.get("Register Type")),
                     "dataType": self.parse_data_type(line.get("Data Type")),
                     "address": self.parse_address(line.get("Address")),
                     "name": line.get("Name", ""),
-                    "units": line.get("Units", ""),
+                    "units": line.get("Units", "none"),
                     "scaleFactor": self.parse_scale(line.get("Scale Factor")),
                     "offset": self.parse_offset(line.get("Offset")),
                     }
@@ -765,7 +767,11 @@ class CreateModbusProfile(Subcommand):
             profile["uuid"] = args.uuid
         if args.name:
             profile["profileName"] = args.name
-        self.post("/api/v1/modbus/profiles", {"profile": profile})
+        if args.dry_run:
+            json.dump(profile, sys.stdout, indent=4)
+        else:
+            print (profile)
+            self.post("/api/v1/modbus/profiles", {"profile": profile})
 
 class GetModbusConnections(CsvSubCommand):
     name = "list-modbus-connections"
