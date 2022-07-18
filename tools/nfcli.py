@@ -248,6 +248,12 @@ restore, and then upgrade again.
             objects = self.save_endpoint("/api/v1/bacnet/local/", "bacnet-objects.jsonl", archive)
             log.info("archived %d local bacnet objects", len(objects.get("objects", [])))
 
+            profiles = self.save_endpoint("/api/v1/modbus/profiles", "modbus-profiles.jsonl", archive, content=1)
+            log.info("archived %d modbus profiles", len(profiles.get("profiles", [])))
+
+            connections = self.save_endpoint("/api/v1/modbus/connections", "modbus-connections.jsonl", archive)
+            log.info("archived %d modbus connections", len(connections.get("connections", [])))
+
             # download the point database for each base layer, and add
             # all of the points
             with archive.open("points.jsonl", mode="w") as fp:
@@ -291,7 +297,9 @@ class RestoreCommand(Subcommand):
         parser.add_argument("--no-bacnet-settings", action="store_true", default=False,
                             help="don't restore bacnet settings")
         parser.add_argument("--no-config", action="store_true", default=False,
-                            help="don't resture UI configuration")
+                            help="don't restore UI configuration")
+        parser.add_argument("--no-modbus", action="store_true", default=False,
+                            help="don't restore modbus settings")
 
     def restore_bacnet_settings(self, archive):
         """Restore the BACnet settings (datalink, BBMD, etc)."""
@@ -361,6 +369,20 @@ class RestoreCommand(Subcommand):
             self.post("/api/v1/point/points", points)
         log.info("restored %d points", count)
 
+    def restore_modbus_profiles(self, archive):
+        with archive.open("modbus-profiles.jsonl", "r") as fp:
+            for l in fp.readlines():
+                profiles = json.loads(l)
+                for p in profiles.get("profiles", []):
+                    self.post("/api/v1/modbus/profiles", {"profile": p})
+
+    def restore_modbus_connections(self, archive):
+        with archive.open("modbus-connections.jsonl", "r") as fp:
+            for l in fp.readlines():
+                profiles = json.loads(l)
+                for c in profiles.get("connections", []):
+                    self.post("/api/v1/modbus/connections", {"connection": c})
+
     def run(self, args):
         with zipfile.ZipFile(args.backup, mode="r") as archive:
             info = json.load(archive.open("info.jsonl"))
@@ -386,6 +408,9 @@ class RestoreCommand(Subcommand):
                 self.restore_config(archive)
             if not args.no_points:
                 self.restore_points(archive)
+            if not args.no_modbus:
+                self.restore_modbus_profiles(archive)
+                self.restore_modbus_connections(archive)
 
             # layers are not restored now, only the default layers
             # will exist.
