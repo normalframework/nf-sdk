@@ -747,7 +747,6 @@ class CreateModbusProfile(Subcommand):
 
             registers = []
             for line in reader:
-                print (line)
                 reg = {
                     "registerType": self.parse_register_type(line.get("Register Type")),
                     "dataType": self.parse_data_type(line.get("Data Type")),
@@ -770,7 +769,6 @@ class CreateModbusProfile(Subcommand):
         if args.dry_run:
             json.dump(profile, sys.stdout, indent=4)
         else:
-            print (profile)
             self.post("/api/v1/modbus/profiles", {"profile": profile})
 
 class GetModbusConnections(CsvSubCommand):
@@ -817,6 +815,14 @@ def lookup_object_type(otype):
 def to_objectid(oid):
     return ''.join(re.findall("\_([a-z])", oid.lower()))
 
+def parse_bool(x):
+    if isinstance(x, str):
+        if x.lower() in ["false", "0"]:
+            return False
+        else:
+            return True
+    else:
+        return bool(x)
 
 type_map = {
     "real": float,
@@ -825,7 +831,7 @@ type_map = {
     "octet_string": str,
     "signed": int,
     "unsigned": int,
-    "boolean": bool,
+    "boolean": parse_bool,
     "null": lambda x: True,
     "enumerated": str,
 }
