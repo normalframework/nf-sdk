@@ -38,6 +38,7 @@ import collections
 import zipfile
 import re
 import csv
+import http.client
 
 # page size to get points from points api
 CHUNKSZ=500
@@ -828,7 +829,69 @@ class CreateModbusConnection(Subcommand):
                 "unit_id": args.unit_id,
                 }
             })
-                  
+
+class WatchDataCommand(Subcommand):
+    name = "watch-data"
+
+    def add_arguments(self, parser):
+        parser.add_argument("--version", default="$", help="streaming version to start with")
+
+    # take a urllib response object and read json objects out of the
+    # stream as clumsily as possible
+    def read_objects(self, response):
+        buf = ""
+        while True:
+            # to avoid needing to intro an async api we read it a byte
+            # at a time, which is, of course, horribly inefficient.
+            chunk = response.read(1)
+            if not chunk:
+                break
+            buf += chunk.decode('utf-8')
+            while True:
+                # remove pesky object separators
+                buf = buf.lstrip(",\n [")
+                try:
+                    # see if the chunk boundary magically is a valid
+                    # json object
+                    yield json.loads(buf)
+                    buf = ""
+                    continue
+                except json.JSONDecodeError as err:
+                    if err.pos == len(buf):
+                        break
+                    try:
+                        # more likely there is a valid object at the
+                        # beginning of the buffer now, so parse it and
+                        # keep going
+                        yield json.loads(buf[:err.pos])
+                        buf = buf[err.pos:]
+                    except:
+                        break
+        
+    
+    def run(self, args):
+        version = args.version
+        while True:
+            req = urllib.request.Request(self.base + "/api/v1/point/updates/data?wait=1&version=" + version)
+            # we get a streaming reply.  we need to fish the objects out
+            # of the stream so we can print them.
+            last_version = ""
+            with urllib.request.urlopen(req) as response:
+                # use our iterator reader to read the response objects
+                try:
+                    for o in self.read_objects(response):
+                        if o["version"] == last_version:
+                            continue
+                        else:
+                            last_version = o["version"]
+                        val = o["value"]
+                        ts = val.pop("ts")
+                        value = val.pop(list(val.keys())[0])
+                        version = o["version"]
+                        print (o["uuid"], ts, value, o["version"], o["layer"])
+                except http.client.IncompleteRead:
+                    # this is what you get when envoy times out
+                    pass
 
 
 def lookup_object_type(otype):
@@ -1415,6 +1478,7 @@ if __name__ == '__main__':
         GetModbusConnections,
         DeleteModbusConnection,
         CreateModbusConnection,
+        WatchDataCommand,
     ]
     parser = argparse.ArgumentParser("Normal Framework CLI")
     parser.add_argument("command", metavar="command",
