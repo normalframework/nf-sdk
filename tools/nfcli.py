@@ -504,7 +504,13 @@ class FindCommand(Subcommand):
 
         # iterate over result pages and save the matching uuids
         while count == CHUNKSZ:
-            page = self.get("/api/v1/point/points", query=query, page_size=CHUNKSZ, page_offset=offset, layer=args.layer)
+            try:
+                page = self.get("/api/v1/point/points", query=query, page_size=CHUNKSZ, page_offset=offset, layer=args.layer)
+            except Exception as e:
+                log.error("Error retrieving chunk: q=%s, page_size=%i, page_offset=%i, layer=%s, error=%s",
+                          query, CHUNKSZ, offset, args.layer, e)
+                offset += CHUNKSZ
+                continue
             offset += CHUNKSZ
             count = len(page["points"])
             for p in page["points"]:
