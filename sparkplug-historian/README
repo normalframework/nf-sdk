@@ -1,0 +1,31 @@
+
+The Sparkplug-SQL historian reads data from a MQTT/Sparkplug broker
+and inserts them into a Postgres/Timescale DB.
+
+Prerequisites:
+
+ * MQTT broker is running
+ * Postgres is running with a username for the historian
+ * Tables have been created using tables.sql
+
+You may use the following environment variables to configure the MQTT
+and Postgres connections:
+
+The default topic is /spBv1.0/{ SPARKPLUG_GROUP_ID }/#
+SPARKPLUG_GROUP_ID=normalgw
+
+Mqtt connection information.  SSL is not currently supported for the historian.
+MQTT_BROKER=LOCALHOST
+MQTT_PORT=1883
+MQTT_CLIENT_ID=sparkplug_historian
+MQTT_USERNAME=
+MQTT_PASSWORD=
+
+Postgres connection information.
+PGHOST=localhost
+PGUSER=sparkplug
+PGPASSWORD=password
+PGPORT=5432
+PGDATABASE=sparkplug
+PGSCHEMA=public
+
