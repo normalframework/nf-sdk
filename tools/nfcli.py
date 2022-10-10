@@ -30,8 +30,10 @@ import os
 import sys
 import logging
 import argparse
+import http.client
 import urllib.request
 import urllib.parse
+from urllib.error import HTTPError
 import time
 import json
 import collections
@@ -41,7 +43,7 @@ import csv
 import http.client
 
 # page size to get points from points api
-CHUNKSZ=500
+CHUNKSZ=250
 # how many times to retrie GET requests
 RETRIES=3
 
@@ -84,12 +86,23 @@ class Subcommand(object):
         req = urllib.request.Request(self.base + api + "?" + qs)
 
         for i in range(0, RETRIES):
-            with urllib.request.urlopen(req) as response:
-                log.debug("GET code=%d url=%s", response.code,  api + "?" + qs)
-                if response.code == 200:
-                    return json.load(response)
+            try:
+                with urllib.request.urlopen(req) as response:
+                    log.debug("GET code=%d url=%s", response.code,  api + "?" + qs)
+                    if response.code == 200:
+                        try:
+                            return json.load(response)
+                        except http.client.IncompleteRead:
+                            time.sleep(.1)
+                    else:
+                        break
+            except HTTPError as e:
+                if e.code == 500:
+                    log.warning("GET code=%d, retrying", e.code)
+                    time.sleep(.1)
                 else:
-                    break
+                    raise
+
 
 def errorString(err):
     err = err["error"]
@@ -270,6 +283,10 @@ restore, and then upgrade again.
                                         query="*",
                                         page_size=CHUNKSZ,
                                         page_offset=offset)
+                        if data is None:
+                            log.warning("missing segment; skipping")
+                            offset += CHUNKSZ
+                            continue
                         if len(data["points"]) == 0:
                             break
                         else:
