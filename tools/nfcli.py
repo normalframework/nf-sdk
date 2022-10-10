@@ -320,7 +320,10 @@ class RestoreCommand(Subcommand):
     def restore_config(self, archive):
         with archive.open("configkeys.jsonl", "r") as fp:
             config = json.load(fp)
+        if not "values" in config:
+            config["values"] = {}
         log.info("restoring %d configuration settings", len(config["values"]))
+            
         for k, v in config["values"].items():
             self.post("/api/v1/point/configkeys", {
                 "key": k,
@@ -566,9 +569,12 @@ class ListObjectsCommand(Subcommand):
     def output_object(self, obj, args):
         oid = to_objectid(obj["objectId"]["objectType"]) + "." + str(obj["objectId"]["instance"])
         output = {"object_id": oid}
-        
+
         for prop in obj["props"]:
-            output[prop["property"].lower()[5:]] = self.as_scalar(prop["value"])
+            if isinstance(prop["property"], str):
+                output[prop["property"].lower()[5:]] = self.as_scalar(prop["value"])
+            else:
+                output[str(prop["property"])] = self.as_scalar(prop["value"])
 
         return output
 
