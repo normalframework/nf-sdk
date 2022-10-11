@@ -24,11 +24,10 @@
 
 version: "2.2"
 services:
-
   # the main container which runs all the NF services, load balancer,
   # and management console.
   nf:
-    image: normalframework.azurecr.io/normalframework/nf-full:1.5
+    image: normalframework.azurecr.io/normalframework/nf-full:develop
     ports:
       - "8080:8080"
     networks:
@@ -42,10 +41,10 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - S6_READ_ONLY_ROOT=1 
+      - S6_READ_ONLY_ROOT=1
       - REDIS_ADDRESS=redis:6379
-      
-#  if you want data to be persistent, you need to mount /var in the container
+    
+      #  if you want data to be persistent, you need to mount /var in the container
 #  a volume
     volumes:
       - /tmp/nf:/var
@@ -53,7 +52,7 @@ services:
   # Most persistent data is in redis.  This is essentially an
   #  unmodified upstream with RediSearch and RedisTimeseries installed.
   redis:
-    image: normalframework.azurecr.io/normalframework/redis:1.5
+    image: normalframework.azurecr.io/normalframework/redis:develop
     networks:
       - internal
     read_only: true
@@ -63,12 +62,25 @@ services:
   bacnet-simulator:
     image: stevedh/bactools
     command: server
-    
     networks:
       - internal
     environment:
       - BACNET_IP_DEBUG=1
-      
+
+  code-server:
+    image: normal/vs-code-server:3
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - PASSWORD=test
+      - SUDO_PASSWORD=test
+    volumes:
+      - /Users/joshuaguenther/git/normal/nf/js-sdk/edge-runner:/config/workspace
+    ports:
+      - 8443:8443
+    restart: unless-stopped
+    networks:
+      - internal
 networks:
   internal:
   
