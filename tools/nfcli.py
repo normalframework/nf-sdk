@@ -30,8 +30,10 @@ import os
 import sys
 import logging
 import argparse
+import http.client
 import urllib.request
 import urllib.parse
+from urllib.error import HTTPError
 import time
 import json
 import collections
@@ -41,7 +43,7 @@ import csv
 import http.client
 
 # page size to get points from points api
-CHUNKSZ=500
+CHUNKSZ=250
 # how many times to retrie GET requests
 RETRIES=3
 
@@ -84,12 +86,23 @@ class Subcommand(object):
         req = urllib.request.Request(self.base + api + "?" + qs)
 
         for i in range(0, RETRIES):
-            with urllib.request.urlopen(req) as response:
-                log.debug("GET code=%d url=%s", response.code,  api + "?" + qs)
-                if response.code == 200:
-                    return json.load(response)
+            try:
+                with urllib.request.urlopen(req) as response:
+                    log.debug("GET code=%d url=%s", response.code,  api + "?" + qs)
+                    if response.code == 200:
+                        try:
+                            return json.load(response)
+                        except http.client.IncompleteRead:
+                            time.sleep(.1)
+                    else:
+                        break
+            except HTTPError as e:
+                if e.code == 500:
+                    log.warning("GET code=%d, retrying", e.code)
+                    time.sleep(.1)
                 else:
-                    break
+                    raise
+
 
 def errorString(err):
     err = err["error"]
@@ -270,6 +283,10 @@ restore, and then upgrade again.
                                         query="*",
                                         page_size=CHUNKSZ,
                                         page_offset=offset)
+                        if data is None:
+                            log.warning("missing segment; skipping")
+                            offset += CHUNKSZ
+                            continue
                         if len(data["points"]) == 0:
                             break
                         else:
@@ -320,7 +337,10 @@ class RestoreCommand(Subcommand):
     def restore_config(self, archive):
         with archive.open("configkeys.jsonl", "r") as fp:
             config = json.load(fp)
+        if not "values" in config:
+            config["values"] = {}
         log.info("restoring %d configuration settings", len(config["values"]))
+            
         for k, v in config["values"].items():
             self.post("/api/v1/point/configkeys", {
                 "key": k,
@@ -510,7 +530,13 @@ class FindCommand(Subcommand):
 
         # iterate over result pages and save the matching uuids
         while count == CHUNKSZ:
-            page = self.get("/api/v1/point/points", query=query, page_size=CHUNKSZ, page_offset=offset, layer=args.layer)
+            try:
+                page = self.get("/api/v1/point/points", query=query, page_size=CHUNKSZ, page_offset=offset, layer=args.layer)
+            except Exception as e:
+                log.error("Error retrieving chunk: q=%s, page_size=%i, page_offset=%i, layer=%s, error=%s",
+                          query, CHUNKSZ, offset, args.layer, e)
+                offset += CHUNKSZ
+                continue
             offset += CHUNKSZ
             count = len(page["points"])
             for p in page["points"]:
@@ -571,9 +597,12 @@ class ListObjectsCommand(Subcommand):
     def output_object(self, obj, args):
         oid = to_objectid(obj["objectId"]["objectType"]) + "." + str(obj["objectId"]["instance"])
         output = {"object_id": oid}
-        
+
         for prop in obj["props"]:
-            output[prop["property"].lower()[5:]] = self.as_scalar(prop["value"])
+            if isinstance(prop["property"], str):
+                output[prop["property"].lower()[5:]] = self.as_scalar(prop["value"])
+            else:
+                output[str(prop["property"])] = self.as_scalar(prop["value"])
 
         return output
 
