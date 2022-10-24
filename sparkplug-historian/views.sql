@@ -30,12 +30,12 @@ CREATE VIEW public.data_replication_status AS
     ('1970-01-01 00:00:00'::timestamp without time zone + ((((nodes.lgsn >> 10) / 1000))::double precision * '00:00:01'::interval)) AS lgsm_time
    FROM public.nodes;
 
+
 CREATE FUNCTION array_distinct(anyarray) RETURNS anyarray AS $f$
   SELECT array_agg(DISTINCT x) FROM unnest($1) t(x);
 $f$ LANGUAGE SQL IMMUTABLE;
 
 
-with 
 select
 	device_vendor_name,
 	device_model_name,
@@ -46,8 +46,7 @@ from
 	bacnet_metadata
 group by
       device_vendor_name,
-      device_model_name
-;
+      device_model_name;
 
 
 with object_counts as (
@@ -91,4 +90,4 @@ group by
       device_vendor_name,
       device_model_name,
       object_counts
-
+;
