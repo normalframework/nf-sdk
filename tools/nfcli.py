@@ -904,15 +904,12 @@ class WatchDataCommand(Subcommand):
             req = urllib.request.Request(self.base + "/api/v1/point/updates/data?wait=1&version=" + version)
             # we get a streaming reply.  we need to fish the objects out
             # of the stream so we can print them.
-            last_version = ""
             with urllib.request.urlopen(req) as response:
                 # use our iterator reader to read the response objects
                 try:
                     for o in self.read_objects(response):
-                        if o["version"] == last_version:
+                        if o["version"] == version:
                             continue
-                        else:
-                            last_version = o["version"]
                         val = o["value"]
                         ts = val.pop("ts")
                         value = val.pop(list(val.keys())[0])
