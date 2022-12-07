@@ -719,7 +719,16 @@ class CsvSubCommand(Subcommand):
         writer.writeheader()
         for p in self.getlist(args):
             writer.writerow(p)
-        
+
+class DeleteModbusProfile(Subcommand):
+    name = "delete-modbus-profile"
+    def add_arguments(self, parser):
+        parser.add_argument("profile_uuid", metavar="profile_uuid", nargs=1, default="",
+                            help="delete a profile")
+
+    def run(self, args):
+        self.delete("/api/v1/modbus/profiles", {"uuid": args.profile_uuid[0]})
+    
 
 class GetModbusProfiles(CsvSubCommand):
     fieldnames= ["profileName", "uuid", "endianness", "highWordFirst"]
@@ -1501,6 +1510,7 @@ if __name__ == '__main__':
         UpdateObjectCommand,
         GetModbusProfiles,
         CreateModbusProfile,
+        DeleteModbusProfile,
         GetModbusConnections,
         DeleteModbusConnection,
         CreateModbusConnection,
