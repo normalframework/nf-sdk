@@ -848,7 +848,7 @@ class DeleteModbusConnection(Subcommand):
                             help="delete a connection")
 
     def run(self, args):
-        self.delete("/api/v1/modbus/connections", {"connection_uuid": args.connection_uuid[0]})
+        self.delete("/api/v1/modbus/connections", {"uuid": args.connection_uuid[0]})
 
 class CreateModbusConnection(Subcommand):
     name = "create-modbus-connection"
