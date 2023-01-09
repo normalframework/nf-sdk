@@ -1,0 +1,59 @@
+version: "2"
+
+volumes:
+  redis-db:
+  jupyter-notebooks:
+  spool-data:
+  spool-errors:
+  spool-commands:
+  service-config:
+  tailscale:
+  tailscale-certs:
+  templates:
+
+services:
+  redis:
+    image: normalframework.azurecr.io/normalframework/redis:1.5
+    ports:
+      - "6379:6379"
+    volumes:
+      - "redis-db:/data"
+
+  nf:
+    image: normalframework.azurecr.io/normalframework/nf-full:1.5
+    network_mode: host
+    cap_add:
+      - NET_BIND_SERVICE
+    environment:
+      - PORT=80
+    depends_on:
+      - redis
+    volumes:
+      - "tailscale-certs:/tailscale-certs"
+      - "service-config:/var/nf/bacnet"
+      - "spool-data:/var/nf/data"
+      - "spool-errors:/var/nf/errors"
+      - "service-config:/var/nf/sparklug"
+      - "service-config:/var/nf/modbus"
+      - "spool-commands:/var/nf/commands"
+      - "templates:/var/nf/templates"
+
+  tailscale:
+    image: normalframework.azurecr.io/normalframework/tailscale:1.5
+    network_mode: host
+    command: tailscaled
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    volumes:
+      - "tailscale:/var/lib"
+      - "tailscale-certs:/tailscale-certs"
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+
+    environment:
+      - SERVICE_BIND_ADDRESS=:9090
+      - REDIS_ADDRESS=redis:6379
+      - POINT_SERVICE_ADDRESS=point-service:9090
+      - TEMPLATE_DIR=/templates
+      
