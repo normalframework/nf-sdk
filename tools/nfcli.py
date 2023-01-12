@@ -268,6 +268,10 @@ restore, and then upgrade again.
             connections = self.save_endpoint("/api/v1/modbus/connections", "modbus-connections.jsonl", archive)
             log.info("archived %d modbus connections", len(connections.get("connections", [])))
 
+            settings = self.save_endpoint("/api/v1/platform/env", "environment.jsonl", archive)
+            log.info("archived %d configuration variables", len(settings.get("variables", [])))
+
+
             # download the point database for each base layer, and add
             # all of the points
             with archive.open("points.jsonl", mode="w") as fp:
@@ -318,6 +322,8 @@ class RestoreCommand(Subcommand):
                             help="don't restore UI configuration")
         parser.add_argument("--no-modbus", action="store_true", default=False,
                             help="don't restore modbus settings")
+        parser.add_argument("--no-variables", action="store_true", default=False,
+                            help="don't restore configuration variables")
 
     def restore_bacnet_settings(self, archive):
         """Restore the BACnet settings (datalink, BBMD, etc)."""
@@ -350,7 +356,6 @@ class RestoreCommand(Subcommand):
         """Restore all of the templates, and reenable any that were running
         """
 
-        log.info("restoring templates")
         enable_count, count = 0, 0
         with archive.open("templates.jsonl", "r") as fp:
             templates = json.load(fp)
@@ -404,6 +409,19 @@ class RestoreCommand(Subcommand):
                 for c in profiles.get("connections", []):
                     self.post("/api/v1/modbus/connections", {"connection": c})
 
+    def restore_variables(self, archive):
+        restored, default = 0, 0
+        with archive.open("environment.jsonl", "r") as fp:
+            for l in fp.readlines():
+                variables = json.loads(l)
+                for v in variables["variables"]:
+                    if v["isDefault"]:
+                        default += 1
+                        continue
+                    self.post("/api/v1/platform/env", {"variables": [v]})
+                    restored += 1
+        log.info("restored %d configuration variables (skipped %d default values)", restored, default)
+
     def run(self, args):
         with zipfile.ZipFile(args.backup, mode="r") as archive:
             info = json.load(archive.open("info.jsonl"))
@@ -432,6 +450,8 @@ class RestoreCommand(Subcommand):
             if not args.no_modbus:
                 self.restore_modbus_profiles(archive)
                 self.restore_modbus_connections(archive)
+            if not args.no_variables:
+                self.restore_variables(archive)
 
             # layers are not restored now, only the default layers
             # will exist.
@@ -462,6 +482,12 @@ class FindCommand(Subcommand):
                             help="delete matching points")
         parser.add_argument("--period", "-p", type=int, default=None,
                             help="update polling period for matching points")
+        parser.add_argument("--enable-cov", "-c", default=None,
+                            action="store_true", dest="cov",
+                            help="enable COVs for the found points")
+        parser.add_argument("--disable-cov", default=None,
+                            action="store_false", dest="cov",
+                            help="disable COVs for the found points")
 
     def build_query(self, args):
         """Build a query string from the command line
@@ -544,22 +570,27 @@ class FindCommand(Subcommand):
         if not args.json and not args.csv and not args.delete and args.period is None:
             log.info ("found " + str(len(uuids)) + " point" + ("" if len(uuids) == 1 else "s"))
         
-        if args.period is not None:
+        if args.period is not None or args.cov is not None:
             if sys.stdin.isatty():
-                x = input("Really update polling rate for {} points? [y/N]: ".format(len(uuids)))
+                x = input("Really update {} points? [y/N]: ".format(len(uuids)))
                 if not x.lower().strip() == "y":
                     return
             for i in range(0, len(uuids), CHUNKSZ):
-                self.post("/api/v1/point/points", {
-                    "points": [{
-                        "layer": args.layer,
-                        "uuid": u,
-                        "period": {
-                            "seconds": args.period,
-                            },
-                        } for u in uuids[i:i+CHUNKSZ]]
-                    })
-            log.info("updated polling rate for {} points".format(len(uuids)))
+                cmd = {}
+                if args.period is not None:
+                    cmd["period"] = {
+                        "seconds": args.period,
+                    }
+                if args.cov is not None:
+                    cmd["cov"] = {"enabled": args.cov}
+                request = {"points": [{**{
+                    "layer": args.layer,
+                    "uuid": u,
+                }, **cmd } for u in uuids[i:i+CHUNKSZ]]
+                           }
+                self.post("/api/v1/point/points", request)
+
+            log.info("updated data aquisition for {} points".format(len(uuids)))
 
         if args.delete:
             if sys.stdin.isatty():
@@ -572,6 +603,57 @@ class FindCommand(Subcommand):
                     "uuids": uuids[i:i+CHUNKSZ]})
 
 
+class UpdateCommand(Subcommand):
+    name = "update"
+    help_text = "Search the object database for points"
+
+    def add_arguments(self, parser):
+        parser.add_argument("file", metavar="N", nargs=1, default=None,
+                            help="csv file to read updates from")
+        parser.add_argument("--fields", "-f", help="fields to update", default="")
+
+    def run(self, args):
+        if args.fields == "":
+            print("Must provide comma-separated list of fields to update")
+            return
+        fields = args.fields.split(",")
+        uuid_index = -1
+        field_indexes = []
+        header = None
+        update = []
+        for line in csv.reader(open(args.file[0])):
+            if header is None:
+                header = line
+                uuid_index = header.index("uuid")
+                for f in fields:
+                    field_indexes.append(header.index(f))
+                continue
+            point = {
+                "layer": args.layer,
+                "uuid": line[uuid_index],
+                "attrs": {}
+                }
+            updates = 0
+            for i, attr in enumerate(fields):
+                if attr == "period":
+                    p = line[field_indexes[i]]
+                    if p.endswith("s"):
+                        p = p[:-1]
+                    if p == "" or int(float(p)) == 0:
+                        continue
+                    updates += 1
+                    point["period"] = {
+                        "seconds": int(float(p))
+                    }
+                else:
+                    updates += 1
+                    point["attr"][attr] = line[field_indexes[i]]
+            if updates > 0:
+                update.append(point)
+        
+        self.post("/api/v1/point/points", {
+            "points": update })
+                
 class ListObjectsCommand(Subcommand):
     name = "list-bacnet-objects"
 
@@ -1503,6 +1585,7 @@ if __name__ == '__main__':
         BackupCommand,
         RestoreCommand,
         FindCommand,
+        UpdateCommand,
         VersionCommand,
         ListObjectsCommand,
         DeleteObjectCommand,
