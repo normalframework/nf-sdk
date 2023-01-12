@@ -572,6 +572,57 @@ class FindCommand(Subcommand):
                     "uuids": uuids[i:i+CHUNKSZ]})
 
 
+class UpdateCommand(Subcommand):
+    name = "update"
+    help_text = "Search the object database for points"
+
+    def add_arguments(self, parser):
+        parser.add_argument("file", metavar="N", nargs=1, default=None,
+                            help="csv file to read updates from")
+        parser.add_argument("--fields", "-f", help="fields to update", default="")
+
+    def run(self, args):
+        if args.fields == "":
+            print("Must provide comma-separated list of fields to update")
+            return
+        fields = args.fields.split(",")
+        uuid_index = -1
+        field_indexes = []
+        header = None
+        update = []
+        for line in csv.reader(open(args.file[0])):
+            if header is None:
+                header = line
+                uuid_index = header.index("uuid")
+                for f in fields:
+                    field_indexes.append(header.index(f))
+                continue
+            point = {
+                "layer": args.layer,
+                "uuid": line[uuid_index],
+                "attrs": {}
+                }
+            updates = 0
+            for i, attr in enumerate(fields):
+                if attr == "period":
+                    p = line[field_indexes[i]]
+                    if p.endswith("s"):
+                        p = p[:-1]
+                    if p == "" or int(float(p)) == 0:
+                        continue
+                    updates += 1
+                    point["period"] = {
+                        "seconds": int(float(p))
+                    }
+                else:
+                    updates += 1
+                    point["attr"][attr] = line[field_indexes[i]]
+            if updates > 0:
+                update.append(point)
+        
+        self.post("/api/v1/point/points", {
+            "points": update })
+                
 class ListObjectsCommand(Subcommand):
     name = "list-bacnet-objects"
 
@@ -1503,6 +1554,7 @@ if __name__ == '__main__':
         BackupCommand,
         RestoreCommand,
         FindCommand,
+        UpdateCommand,
         VersionCommand,
         ListObjectsCommand,
         DeleteObjectCommand,
