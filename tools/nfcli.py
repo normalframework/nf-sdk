@@ -268,6 +268,10 @@ restore, and then upgrade again.
             connections = self.save_endpoint("/api/v1/modbus/connections", "modbus-connections.jsonl", archive)
             log.info("archived %d modbus connections", len(connections.get("connections", [])))
 
+            settings = self.save_endpoint("/api/v1/platform/env", "environment.jsonl", archive)
+            log.info("archived %d configuration variables", len(settings.get("variables", [])))
+
+
             # download the point database for each base layer, and add
             # all of the points
             with archive.open("points.jsonl", mode="w") as fp:
@@ -318,6 +322,8 @@ class RestoreCommand(Subcommand):
                             help="don't restore UI configuration")
         parser.add_argument("--no-modbus", action="store_true", default=False,
                             help="don't restore modbus settings")
+        parser.add_argument("--no-variables", action="store_true", default=False,
+                            help="don't restore configuration variables")
 
     def restore_bacnet_settings(self, archive):
         """Restore the BACnet settings (datalink, BBMD, etc)."""
@@ -350,7 +356,6 @@ class RestoreCommand(Subcommand):
         """Restore all of the templates, and reenable any that were running
         """
 
-        log.info("restoring templates")
         enable_count, count = 0, 0
         with archive.open("templates.jsonl", "r") as fp:
             templates = json.load(fp)
@@ -404,6 +409,19 @@ class RestoreCommand(Subcommand):
                 for c in profiles.get("connections", []):
                     self.post("/api/v1/modbus/connections", {"connection": c})
 
+    def restore_variables(self, archive):
+        restored, default = 0, 0
+        with archive.open("environment.jsonl", "r") as fp:
+            for l in fp.readlines():
+                variables = json.loads(l)
+                for v in variables["variables"]:
+                    if v["isDefault"]:
+                        default += 1
+                        continue
+                    self.post("/api/v1/platform/env", {"variables": [v]})
+                    restored += 1
+        log.info("restored %d configuration variables (skipped %d default values)", restored, default)
+
     def run(self, args):
         with zipfile.ZipFile(args.backup, mode="r") as archive:
             info = json.load(archive.open("info.jsonl"))
@@ -432,6 +450,8 @@ class RestoreCommand(Subcommand):
             if not args.no_modbus:
                 self.restore_modbus_profiles(archive)
                 self.restore_modbus_connections(archive)
+            if not args.no_variables:
+                self.restore_variables(archive)
 
             # layers are not restored now, only the default layers
             # will exist.
