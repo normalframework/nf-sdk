@@ -482,6 +482,12 @@ class FindCommand(Subcommand):
                             help="delete matching points")
         parser.add_argument("--period", "-p", type=int, default=None,
                             help="update polling period for matching points")
+        parser.add_argument("--enable-cov", "-c", default=None,
+                            action="store_true", dest="cov",
+                            help="enable COVs for the found points")
+        parser.add_argument("--disable-cov", default=None,
+                            action="store_false", dest="cov",
+                            help="disable COVs for the found points")
 
     def build_query(self, args):
         """Build a query string from the command line
@@ -564,22 +570,27 @@ class FindCommand(Subcommand):
         if not args.json and not args.csv and not args.delete and args.period is None:
             log.info ("found " + str(len(uuids)) + " point" + ("" if len(uuids) == 1 else "s"))
         
-        if args.period is not None:
+        if args.period is not None or args.cov is not None:
             if sys.stdin.isatty():
-                x = input("Really update polling rate for {} points? [y/N]: ".format(len(uuids)))
+                x = input("Really update {} points? [y/N]: ".format(len(uuids)))
                 if not x.lower().strip() == "y":
                     return
             for i in range(0, len(uuids), CHUNKSZ):
-                self.post("/api/v1/point/points", {
-                    "points": [{
-                        "layer": args.layer,
-                        "uuid": u,
-                        "period": {
-                            "seconds": args.period,
-                            },
-                        } for u in uuids[i:i+CHUNKSZ]]
-                    })
-            log.info("updated polling rate for {} points".format(len(uuids)))
+                cmd = {}
+                if args.period is not None:
+                    cmd["period"] = {
+                        "seconds": args.period,
+                    }
+                if args.cov is not None:
+                    cmd["cov"] = {"enabled": args.cov}
+                request = {"points": [{**{
+                    "layer": args.layer,
+                    "uuid": u,
+                }, **cmd } for u in uuids[i:i+CHUNKSZ]]
+                           }
+                self.post("/api/v1/point/points", request)
+
+            log.info("updated data aquisition for {} points".format(len(uuids)))
 
         if args.delete:
             if sys.stdin.isatty():
