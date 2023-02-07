@@ -66,10 +66,12 @@ class Subcommand(object):
                     log.debug("POST code=%d url=%s", response.code, api)
                 else:
                     log.warning("POST code=%d url=%s", response.code, api)
+                return json.load(response)
         except urllib.error.HTTPError as e:
-            print (e)
             msg = e.headers.get("grpc-message")
             log.error("POST url=%s message=%s", api, msg)#e.headers.get("gprc-message"))
+        except json.decoder.JSONDecodeError as e:
+            log.error("POST url=%s message=%s", api, "error decoding json reply")
                     
     def delete(self, api, data):
         req = urllib.request.Request(self.base + api, json.dumps(data).encode('utf-8'), headers={
@@ -82,7 +84,10 @@ class Subcommand(object):
                                      
     
     def get(self, api, **params):
-        qs = urllib.parse.urlencode(params)
+        if params.get("qs", None):
+            qs = params.get("sq")
+        else:
+            qs = urllib.parse.urlencode(params, doseq=True)
         req = urllib.request.Request(self.base + api + "?" + qs)
 
         for i in range(0, RETRIES):
@@ -1010,7 +1015,66 @@ class WatchDataCommand(Subcommand):
                     # this is what you get when envoy times out
                     pass
 
+class ReadCommand(FindCommand):
+    name = "read"
+    help_text = "Look up points in the database and read from them"
 
+    def add_arguments(self, parser):
+        parser.add_argument("--property_id", default="PROP_PRESENT_VALUE",
+                            help="property identifier to read")
+        parser.add_argument("filters", metavar="N", nargs="*", default=['*'],
+                            help="property filters to apply, in the form of key=value")
+
+    def run(self, args):
+        query = self.build_query(args)
+        offset = 0
+        count = CHUNKSZ
+        uuids = []
+        while count == CHUNKSZ:
+            try:
+                page = self.get("/api/v1/point/points", query=query, page_size=CHUNKSZ, 
+                                page_offset=offset, layer=args.layer)
+            except Exception as e:
+                log.error("Error retrieving chunk: q=%s, page_size=%i, page_offset=%i, layer=%s, error=%s",
+                          query, CHUNKSZ, offset, args.layer, e)
+                offset += CHUNKSZ
+                continue
+            count = len(page["points"])
+            offset += CHUNKSZ
+            uuids.extend(p["uuid"] for p in page["points"])
+
+        res = (self.post("/api/v2/command/read", {
+            "reads" :[
+                {
+                    "point": {
+                        "uuid": u,
+                        "layer": args.layer
+                    },
+                   "bacnet_options": {
+                       "property_identifier": lookup_property_id(args.property_id),
+                   },
+                } for u in uuids ]
+        }))
+        # print the values, using the json value if there's no scalar equalivant
+        for p in res.get("results", []):
+            if p["scalar"] != "":
+                print (p["point"]["layer"], p["point"]["uuid"], p["scalar"])
+            else:
+                print (p["point"]["layer"], p["point"]["uuid"], p["value"])
+
+        for p in res.get("errors", []):
+            sys.stderr.write("{} {} {}\n".format(p["point"]["layer"], p["point"]["uuid"], 
+                                                 p["error"]["error"]))
+
+
+def lookup_property_id(pid):
+    for name, e in property_ids.items():
+        if pid.strip() == name:
+            return e
+    try:
+        return int(pid)
+    except ValueError:
+        return None
 def lookup_object_type(otype):
     for name, e in object_types.items():
         if to_objectid(name) == otype:
@@ -1598,6 +1662,7 @@ if __name__ == '__main__':
         DeleteModbusConnection,
         CreateModbusConnection,
         WatchDataCommand,
+        ReadCommand
     ]
     parser = argparse.ArgumentParser("Normal Framework CLI")
     parser.add_argument("command", metavar="command",
