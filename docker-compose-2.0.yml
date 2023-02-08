@@ -66,6 +66,11 @@ services:
       - internal
     environment:
       - BACNET_IP_DEBUG=1
+
+  modbus-simulator:
+    image: normalframework.azurecr.io/normalframework/modbus-sim:develop
+    networks:
+      - internal
       
 networks:
   internal:
