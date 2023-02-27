@@ -28,7 +28,7 @@ services:
   # the main container which runs all the NF services, load balancer,
   # and management console.
   nf:
-    image: normalframework.azurecr.io/normalframework/nf-full:develop
+    image: normalframework.azurecr.io/normalframework/nf-full:2.0
     ports:
       - "8080:8080"
     networks:
@@ -46,17 +46,17 @@ services:
       
 #  if you want data to be persistent, you need to mount /var in the container
 #  a volume
-    volumes:
-      - /tmp/nf:/var
+#    volumes:
+#      - /tmp/nf:/var
 
   # Most persistent data is in redis.  This is essentially an
   #  unmodified upstream with RediSearch and RedisTimeseries installed.
   redis:
-    image: normalframework.azurecr.io/normalframework/redis:develop
+    image: normalframework.azurecr.io/normalframework/redis:2.0
     networks:
       - internal
-    volumes:
-      - /tmp/nf-redis:/data
+#    volumes:
+#      - /tmp/nf-redis:/data
 
   bacnet-simulator:
     image: stevedh/bactools
