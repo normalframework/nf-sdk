@@ -1,0 +1,55 @@
+{
+    "name": "normalframework",
+    "kind": "SINGLETON",
+    "image_pull_secrets": ["azureacr-login"],
+    "node_id": "beaa0d8a-78c4-405e-bd5a-4042bf1fdd9a",
+    "networks": [
+        {
+            "network_id": "n-09e49136e6c79a60",
+            "is_default": true
+        }
+    ],
+    "services" : [
+        {
+            "name": "redis",
+            "image": {
+                "name": "normalframework.azurecr.io/normalframework/redis",
+                "version": "2.0"
+            },
+            "docker": {
+		"volume_mounts": [{
+                    "name": "redis-state",
+                    "mount_path": "/data",
+                    "read_only": false
+		}]
+	    }
+        },
+        {
+            "name": "nf",
+            "image": {
+                "name": "normalframework.azurecr.io/normalframework/nf-full",
+                "version": "2.0"
+            },
+            "docker": {
+                "environment_vars": {
+                    "REDIS_HOST": "redis"
+                },
+		"volume_mounts": [{
+                    "name": "nf-state",
+                    "mount_path": "/var/nf",
+                    "read_only": false
+		}]
+	    }
+        }
+    ],
+    "volumes": [
+        {
+            "name": "redis-state",
+	    "empty_dir": {}
+        },
+        {
+            "name": "nf-state",
+	    "empty_dir": {}
+        }
+    ]
+}

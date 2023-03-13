@@ -1,0 +1,18 @@
+{
+    "name": "expose-nf",
+    "type": "NODEPORT",
+    "node_id": "beaa0d8a-78c4-405e-bd5a-4042bf1fdd9a",
+    "service_selector": {
+      "name": "normalframework"
+    },
+    "allow_access_from": [
+	"71.112.164.133/32"
+    ],
+    "service_ports": [
+      {
+        "protocol": "TCP",
+        "port": 8080,
+        "node_port": 8080
+      }
+    ]
+  }
