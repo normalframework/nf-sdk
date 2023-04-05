@@ -28,7 +28,7 @@ services:
   # the main container which runs all the NF services, load balancer,
   # and management console.
   nf:
-    image: normalframework.azurecr.io/normalframework/nf-full:1.5
+    image: normalframework.azurecr.io/normalframework/nf-full:1.5.13
     depends_on:
       - redis
     ports:

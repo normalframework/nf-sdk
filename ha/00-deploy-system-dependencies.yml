@@ -1,0 +1,34 @@
+
+- name: Deploy system dependencies for installing normal framework
+  hosts: all
+  become: yes
+  become_user: root
+
+  tasks:
+    - name: Remove snap version of docker if installed
+      community.general.snap:
+        name: docker
+        state: absent
+      
+    - name: Install aptitude using apt
+      apt: name=aptitude state=latest update_cache=yes force_apt_get=yes
+
+    - name: Install required system packages
+      apt: name={{ item }} state=latest update_cache=yes
+      loop: [ 'apt-transport-https', 'ca-certificates', 'curl', 'software-properties-common', 'python3-pip', 'virtualenv', 'python3-setuptools', 'docker-compose']
+
+    - name: Install Docker Module for Python
+      pip:
+        name: docker
+
+    - name: Install Docker-compose Module for Python
+      pip:
+        name: docker-compose
+
+    - name: Log into Docker Hub
+      community.docker.docker_login:
+        registry_url: normalframework.azurecr.io
+        username: intellimation
+        password: ""
+
+

@@ -25,51 +25,37 @@
 version: "2.2"
 services:
 
+  # Most persistent data is in redis.  This is essentially an
+  #  unmodified upstream with RediSearch and RedisTimeseries installed.
+  redis:
+    image: normalframework.azurecr.io/normalframework/redis:2.0
+    command: redis-server /etc/redis.conf {% if ansible_hostname != "nfha-1" %}  --replicaof {{ redis_master }} 6379 {% endif %}
+    
+    ports:
+      - "6379:6379"
+    volumes:
+      - /tmp/redis:/data
+    restart: unless-stopped
+
+  redis-sentinel:
+    image: normalframework.azurecr.io/normalframework/redis:2.0
+    ports:
+      - "26379:26379"
+    command: redis-sentinel /etc/nf/sentinel.conf
+    restart: unless-stopped
+    volumes:
+      - /etc/nf:/etc/nf
+      - /var/run/docker.sock:/var/run/docker.sock
+
   # the main container which runs all the NF services, load balancer,
   # and management console.
   nf:
     image: normalframework.azurecr.io/normalframework/nf-full:2.0
-    networks:
-      - internal
+    network_mode: host
     depends_on:
       - redis
     tmpfs:
       - /run:exec
       - /etc/nginx/conf.d/
-      - /tmp
-    ports:
-      - "8080:8080"
-    environment:
-      - REDIS_ADDRESS=redis:6379
-      
-#  if you want data to be persistent, you need to mount /var in the container
-#  a volume
-#    volumes:
-#      - /tmp/nf:/var
-
-  # Most persistent data is in redis.  This is essentially an
-  #  unmodified upstream with RediSearch and RedisTimeseries installed.
-  redis:
-    image: normalframework.azurecr.io/normalframework/redis:2.0
-    networks:
-      - internal
-#    volumes:
-#      - /tmp/nf-redis:/data
-
-  bacnet-simulator:
-    image: stevedh/bactools
-    command: server
+    restart: unless-stopped
     
-    networks:
-      - internal
-    environment:
-      - BACNET_IP_DEBUG=1
-
-  modbus-simulator:
-    image: normalframework.azurecr.io/normalframework/modbus-sim:2.0
-    networks:
-      - internal
-      
-networks:
-  internal:
-  

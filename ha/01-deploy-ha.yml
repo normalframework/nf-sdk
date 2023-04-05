@@ -1,0 +1,72 @@
+
+- name: Deploy Normal Framework in a HA configuration
+  hosts: all
+  become: yes
+  become_user: root
+  vars:
+    redis_master: 192.168.103.249
+    #hostvars["nfha-1"]["ansible_host"]
+
+  tasks:
+    - name: "Create /etc/nf"
+      file:
+        name: /etc/nf
+        state: directory
+        owner: root
+        group: root
+
+    - name: "Create promotion directory"
+      file:
+        name: /etc/nf/promote.d
+        state: directory
+        owner: root
+        group: root
+
+    - name: "Create promotion directory"
+      file:
+        name: /etc/nf/demote.d
+        state: directory
+        owner: root
+        group: root
+
+    - name: "Create promote script"
+      ansible.builtin.copy:
+        src: files/01-start-nf.sh
+        dest: /etc/nf/promote.d/
+        owner: root
+        group: root
+        mode: 0755
+
+    - name: "Create promote script"
+      ansible.builtin.copy:
+        src: files/01-stop-nf.sh
+        dest: /etc/nf/demote.d/
+        owner: root
+        group: root
+        mode: 0755
+        
+    - name: "Deploy the NF/HA docker-compose file"
+      template:
+        src: docker-compose-2.0-redis-ha.yaml.j2
+        dest: /etc/nf/docker-compose.yaml
+
+    - name: "Deploy the redis-sentinal config file"
+      template:
+        src: sentinel.conf.j2
+        dest: /etc/nf/sentinel.conf
+
+    - name: "Deploy the redis client reconfig script"
+      template:
+        src: reconfigure.sh
+        mode: 0755
+        dest: /etc/nf/reconfigure.sh
+        
+    - name: Pull the latest docker containers
+      community.docker.docker_compose:
+        project_src: /etc/nf
+        pull: yes
+        recreate: always
+      register: output
+
+    - name: Manually run reconfigure to start NF on primary
+      ansible.builtin.shell: /etc/nf/reconfigure.sh
