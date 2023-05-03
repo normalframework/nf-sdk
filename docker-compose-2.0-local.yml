@@ -13,14 +13,16 @@
 #
 
 # Welcome to the NF example docker-compose.  This file should stand up
-# a mostly functioning NF instance on your desktop.  Before running
+# a functioning NF instance on your desktop.  Before running
 # you should just check a few things:
 #  1. several containers need a writable volume, which this file puts in /tmp by default
 #  2. if the BACnet service fails to start, you may need to specify
 #   which interface to use in its environment.
 #
-# This compose file runs entirely in a docker internal network, along
-# with a simple BACnet simulator.
+# This compose file runs attached to the local network in host network
+# mode.  This is required for BACnet/IP broadcast traffic to work correctly
+# on the local network
+
 
 version: "2.2"
 services:
