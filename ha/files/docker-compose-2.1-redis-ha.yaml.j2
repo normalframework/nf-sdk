@@ -28,17 +28,17 @@ services:
   # Most persistent data is in redis.  This is essentially an
   #  unmodified upstream with RediSearch and RedisTimeseries installed.
   redis:
-    image: normalframework.azurecr.io/normalframework/redis:2.0
+    image: normalframework.azurecr.io/normalframework/redis:2.1
     command: redis-server /etc/redis.conf {% if ansible_hostname != "nfha-1" %}  --replicaof {{ redis_master }} 6379 {% endif %}
     
     ports:
       - "6379:6379"
     volumes:
-      - /tmp/redis:/data
+      - /data/redis:/data
     restart: unless-stopped
 
   redis-sentinel:
-    image: normalframework.azurecr.io/normalframework/redis:2.0
+    image: normalframework.azurecr.io/normalframework/redis:2.1
     ports:
       - "26379:26379"
     command: redis-sentinel /etc/nf/sentinel.conf
@@ -50,12 +50,13 @@ services:
   # the main container which runs all the NF services, load balancer,
   # and management console.
   nf:
-    image: normalframework.azurecr.io/normalframework/nf-full:2.0
+    image: normalframework.azurecr.io/normalframework/nf-full:2.1
     network_mode: host
     depends_on:
       - redis
+    volumes:
+      - "/var/nf:/var/nf"
     tmpfs:
       - /run:exec
       - /etc/nginx/conf.d/
     restart: unless-stopped
-    

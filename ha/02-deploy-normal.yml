@@ -4,8 +4,7 @@
   become: yes
   become_user: root
   vars:
-    redis_master: 192.168.103.249
-    #hostvars["nfha-1"]["ansible_host"]
+    redis_master: '{{ hostvars["nfha-1"]["ansible_host"] }}'
 
   tasks:
     - name: "Create /etc/nf"
@@ -47,17 +46,17 @@
         
     - name: "Deploy the NF/HA docker-compose file"
       template:
-        src: docker-compose-2.0-redis-ha.yaml.j2
+        src: files/docker-compose-2.1-redis-ha.yaml.j2
         dest: /etc/nf/docker-compose.yaml
 
     - name: "Deploy the redis-sentinal config file"
       template:
-        src: sentinel.conf.j2
+        src: files/sentinel.conf.j2
         dest: /etc/nf/sentinel.conf
 
     - name: "Deploy the redis client reconfig script"
       template:
-        src: reconfigure.sh
+        src: files/reconfigure.sh
         mode: 0755
         dest: /etc/nf/reconfigure.sh
         

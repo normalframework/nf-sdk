@@ -15,7 +15,7 @@
 
     - name: Install required system packages
       apt: name={{ item }} state=latest update_cache=yes
-      loop: [ 'apt-transport-https', 'ca-certificates', 'curl', 'software-properties-common', 'python3-pip', 'virtualenv', 'python3-setuptools', 'docker-compose']
+      loop: [ 'apt-transport-https', 'ca-certificates', 'curl', 'software-properties-common', 'python3-pip', 'virtualenv', 'python3-setuptools', 'docker-compose', 'glusterfs-server' ]
 
     - name: Install Docker Module for Python
       pip:
@@ -28,7 +28,5 @@
     - name: Log into Docker Hub
       community.docker.docker_login:
         registry_url: normalframework.azurecr.io
-        username: intellimation
-        password: ""
-
-
+        username: '{{ docker_username }}'
+        password: '{{ docker_password }}'
