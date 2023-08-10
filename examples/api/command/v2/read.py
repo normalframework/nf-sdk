@@ -71,14 +71,36 @@ import requests
 nfurl = os.getenv("NFURL", "http://localhost:8080")
 
 # we just use this to get some example points
-res = requests.get(nfurl + "/api/v1/point/points", params={
+# this requires nf >= 2.1.1
+res = requests.post(nfurl + "/api/v1/point/query", data=json.dumps({
+    "structured_query": {
+        "and": [
+            {
+                "field": {
+                    "property": "device_id",
+                    "numeric": { "min_value": 260001, "max_value": 260001 }
+                }
+            },
+            {
+                "or": [
+                    {
+                        "field": {
+                            "property": "type", "text": "OBJECT_ANALOG_INPUT",
+                        }
+                    }, {
+                        "field" : {
+                            "property": "type", "text": "OBJECT_ANALOG_VALUE",
+                        },
+                    },
+                ],
+            },
+        ],
+    },
     "layer": "hpl:bacnet:1",
-    "query": "@attr_device_id:[260001,260001] @attr_type:{OBJECT_ANALOG_INPUT | OBJECT_MULTI_STATE_VALUE }",
-    "page_size": "5",
-    })
+    "page_size": "25",
+}))
 print ("{}: {}".format(res.status_code, res.headers.get("grpc-message")))
 uuids = list(map(lambda x: x["uuid"], res.json()["points"]))
-
 
 res = requests.post(nfurl + "/api/v2/command/read", json={
     "reads": [ {
