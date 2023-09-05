@@ -1,4 +1,4 @@
-"""Read BACnet using the command service.
+"""Write BACnet using the command service.
 
 Using the Command service instead of the BACnet service means that
 there is no need to manually construct the BACnet requests, or to
