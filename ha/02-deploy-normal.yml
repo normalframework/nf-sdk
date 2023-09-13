@@ -21,7 +21,7 @@
         owner: root
         group: root
 
-    - name: "Create promotion directory"
+    - name: "Create demotion directory"
       file:
         name: /etc/nf/demote.d
         state: directory
@@ -36,7 +36,7 @@
         group: root
         mode: 0755
 
-    - name: "Create promote script"
+    - name: "Create demote script"
       ansible.builtin.copy:
         src: files/01-stop-nf.sh
         dest: /etc/nf/demote.d/
@@ -49,7 +49,7 @@
         src: files/docker-compose-2.1-redis-ha.yaml.j2
         dest: /etc/nf/docker-compose.yaml
 
-    - name: "Deploy the redis-sentinal config file"
+    - name: "Deploy the redis-sentinel config file"
       template:
         src: files/sentinel.conf.j2
         dest: /etc/nf/sentinel.conf
