@@ -30,7 +30,7 @@ services:
   # the main container which runs all the NF services, load balancer,
   # and management console.
   nf:
-    image: normalframework.azurecr.io/normalframework/nf-full:2.1
+    image: normalframework.azurecr.io/normalframework/nf-full:2.1.4-2
     network_mode: host
     depends_on:
       - redis
@@ -49,8 +49,8 @@ services:
   redis:
     ports:
       - "6379:6379"
-    image: normalframework.azurecr.io/normalframework/redis:2.1
-#    volumes:
-#      - /tmp/nf-redis:/data
+    image: normalframework.azurecr.io/normalframework/redis:2.1.4-2
+    volumes:
+      - /home/stevedh/src/git/gobac/datasets/edo-redis/:/data
 
   
