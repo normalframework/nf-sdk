@@ -1,0 +1,66 @@
+
+- name: Deploy a shared GlusterFS filesystem
+  hosts: all
+  become: yes
+  become_user: root
+  tasks:
+    - name: Enable service glusterd
+      ansible.builtin.service:
+        name: glusterd
+        enabled: yes
+        state: started
+
+    - name: Create a trusted storage pool
+      run_once: true
+      gluster_peer:
+        state: present
+        nodes: "{{ gluster_node_ips }}"
+
+    - name: Create the brick storage directory
+      ansible.builtin.file:
+        path: /data/brick1
+        state: directory
+        mode: '0755'    
+
+    - name: Create the mount point the gluster volume
+      ansible.builtin.file:
+        path: /data/nf
+        state: directory
+        mode: '0755'
+
+    - name: Create the redis data directory
+      ansible.builtin.file:
+        path: /data/redis
+        state: directory
+        mode: '0755'    
+        
+    - name: Create the gluster volume
+      run_once: true
+      gluster_volume:
+        state: present
+        replicas: 3
+        name: volume0
+        bricks: /data/brick1/store
+        force: 'yes'
+        cluster: "{{ gluster_node_ips }}"
+
+    - name: Start the gluster volume
+      run_once: true
+      gluster_volume:
+        state: started
+        name: volume0
+        cluster: "{{ gluster_node_ips }}"
+
+    - name: Ensure Gluster volume is mounted on all nodes
+      mount:
+        name: "/var/nf"
+        src: "localhost:volume0"
+        fstype: glusterfs
+        opts: "defaults,_netdev"
+        state: mounted
+
+  vars:
+    gluster_node_ips:
+      - '{{ hostvars["nfha-1"].ansible_host }}'
+      - '{{ hostvars["nfha-2"].ansible_host }}'
+      - '{{ hostvars["nfha-3"].ansible_host }}'

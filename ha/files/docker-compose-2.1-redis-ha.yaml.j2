@@ -1,0 +1,62 @@
+#      ___           ___   
+#     /__/\         /  /\  
+#     \  \:\       /  /:/_ 
+#      \  \:\     /  /:/ /\
+#  _____\__\:\   /  /:/ /:/
+# /__/::::::::\ /__/:/ /:/ 
+# \  \:\~~\~~\/ \  \:\/:/  
+#  \  \:\  ~~~   \  \::/   
+#   \  \:\        \  \:\   
+#    \  \:\        \  \:\  
+#     \__\/         \__\/
+#     
+#
+
+# Welcome to the NF example docker-compose.  This file should stand up
+# a mostly functioning NF instance on your desktop.  Before running
+# you should just check a few things:
+#  1. several containers need a writable volume, which this file puts in /tmp by default
+#  2. if the BACnet service fails to start, you may need to specify
+#   which interface to use in its environment.
+#
+# This compose file runs entirely in a docker internal network, along
+# with a simple BACnet simulator.
+
+version: "2.2"
+services:
+
+  # Most persistent data is in redis.  This is essentially an
+  #  unmodified upstream with RediSearch and RedisTimeseries installed.
+  redis:
+    image: normalframework.azurecr.io/normalframework/redis:2.1
+    command: redis-server /etc/redis.conf {% if ansible_hostname != "nfha-1" %}  --replicaof {{ redis_master }} 6379 {% endif %}
+    
+    ports:
+      - "6379:6379"
+    volumes:
+      - /data/redis:/data
+    restart: unless-stopped
+
+  redis-sentinel:
+    image: normalframework.azurecr.io/normalframework/redis:2.1
+    ports:
+      - "26379:26379"
+    command: redis-sentinel /etc/nf/sentinel.conf
+    restart: unless-stopped
+    volumes:
+      - /etc/nf:/etc/nf
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  # the main container which runs all the NF services, load balancer,
+  # and management console.
+  nf:
+    image: normalframework.azurecr.io/normalframework/nf-full:2.1
+    network_mode: host
+    depends_on:
+      - redis
+    volumes:
+      - "/var/nf:/var/nf"
+    tmpfs:
+      - /run:exec
+      - /etc/nginx/conf.d/
+    restart: unless-stopped

@@ -1,25 +1,28 @@
+DROP VIEW IF EXISTS bacnet_metadata;
 CREATE VIEW bacnet_metadata AS (
 SELECT
   id metric_id,
   node_name,
-  (properties->'device_id'->'Value'->>'StringValue')::int device_id,
-  (properties->'device_uuid'->'Value'->>'StringValue')::int device_uuid,
-  (properties->'scanned_at'->'Value'->>'StringValue')::timestamp scanned_at,
-  (properties->'prop_object_name'->'Value'->>'StringValue') object_name,
-  (properties->'prop_description'->'Value'->>'StringValue') object_description,
-  (properties->'type'->'Value'->>'StringValue') object_type,
-  (properties->'instance'->'Value'->>'StringValue') object_instance,
-  (properties->'device_prop_object_name'->'Value'->>'StringValue') device_name,
-  (properties->'device_prop_description'->'Value'->>'StringValue') device_description,
-  (properties->'device_prop_model_name'->'Value'->>'StringValue') device_model_name,
-  (properties->'device_prop_vendor_name'->'Value'->>'StringValue') device_vendor_name,
-  (properties->'device_prop_application_software_version'->'Value'->>'StringValue') device_application_software_version,
-  (properties->'device_prop_location'->'Value'->>'StringValue') device_location,  
-  (properties->'prop_low_limit'->'Value'->>'StringValue')::float low_limit,
-  (properties->'prop_high_limit'->'Value'->>'StringValue')::float high_limit,
-  (properties->'prop_min_pres_value'->'Value'->>'StringValue')::float min_pres_value,
-  (properties->'prop_max_pres_value'->'Value'->>'StringValue')::float max_pres_value
-  
+  (properties->'device_id'->>'stringValue')::int device_id,
+  (properties->'device_uuid'->>'stringValue') device_uuid,
+  (properties->'scanned_at'->>'stringValue')::timestamp scanned_at,
+  (properties->'prop_object_name'->>'stringValue') object_name,
+  (properties->'prop_description'->>'stringValue') object_description,
+  (properties->'type'->>'stringValue') object_type,
+  (properties->'instance'->>'stringValue') object_instance,
+  (properties->'device_prop_object_name'->>'stringValue') device_name,
+  (properties->'device_prop_description'->>'stringValue') device_description,
+  (properties->'device_prop_model_name'->>'stringValue') device_model_name,
+  (properties->'device_prop_vendor_name'->>'stringValue') device_vendor_name,
+  (properties->'device_prop_application_software_version'->>'stringValue') device_application_software_version,
+  (properties->'device_prop_location'->>'stringValue') device_location,  
+  (properties->'prop_low_limit'->>'stringValue')::float low_limit,
+  (properties->'prop_high_limit'->>'stringValue')::float high_limit,
+  (properties->'prop_min_pres_value'->>'stringValue')::float min_pres_value,
+  (properties->'prop_max_pres_value'->>'stringValue')::float max_pres_value,
+  (properties->'class'->>'stringValue') className,
+  (properties->'equipRef'->>'stringValue') equipRef,
+  string_to_array(properties->'markers'->>'stringValue', ',') markers
 FROM
   metadata 
 )

@@ -1,0 +1,7 @@
+sentinel monitor nfmaster {{hostvars["nfha-1"]["ansible_host"]}} 6379 2
+sentinel down-after-milliseconds nfmaster 60000
+sentinel failover-timeout nfmaster 180000
+sentinel parallel-syncs nfmaster 1
+sentinel client-reconfig-script nfmaster /etc/nf/reconfigure.sh
+# need this since otherwise we advertise our docker internal IP which doesn't really work
+sentinel announce-ip {{ ansible_host }}
