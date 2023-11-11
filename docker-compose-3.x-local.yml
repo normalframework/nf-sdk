@@ -30,7 +30,7 @@ services:
   # the main container which runs all the NF services, load balancer,
   # and management console.
   nf:
-    image: normalframework.azurecr.io/normalframework/nf-full:2.1.4-2
+    image: normalframework.azurecr.io/normalframework/nf-full:3.1
     network_mode: host
     depends_on:
       - redis
@@ -38,6 +38,10 @@ services:
       - /run:exec
       - /etc/nginx/conf.d/
       - /tmp
+    environment:
+      - APPLICATION_PATH=/http-8080/localhost
+      - CONSOLE_USERNAME=admin
+      - CONSOLE_PASSWORD=pw
       
 #  if you want data to be persistent, you need to mount /var in the container
 #  a volume
@@ -49,8 +53,8 @@ services:
   redis:
     ports:
       - "6379:6379"
-    image: normalframework.azurecr.io/normalframework/redis:2.1.4-2
+    image: normalframework.azurecr.io/normalframework/redis:3.1
     volumes:
-      - /home/stevedh/src/git/gobac/datasets/edo-redis/:/data
+      - /tmp/nf-redis:/data
 
   

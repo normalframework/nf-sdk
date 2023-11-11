@@ -6,14 +6,14 @@ volumes:
 
 services:
   redis:
-    image: normalframework.azurecr.io/normalframework/redis:3092714d
+    image: normalframework.azurecr.io/normalframework/redis:3.1.0-0
     ports:
-      - "127.0.0.1:6379:6379"
+      - "6379:6379"
     volumes:
       - "redis-db:/data"
 
   nf:
-    image: normalframework.azurecr.io/normalframework/nf-full:3092714d
+    image: normalframework.azurecr.io/normalframework/nf-full:3.1.0-0
     network_mode: host
     privileged: true
     environment:
