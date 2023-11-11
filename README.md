@@ -33,3 +33,13 @@ $ sudo docker-compose up -d
 After this step is finished, you should be able to visit the
 management console at [http://localhost:8080](http://localhost:8080)
 on that machine.
+
+Do More
+=======
+
+Normal offers several pre-built integrations with other systems under permissive licenses.  These can be quickly installed using our Application SDK.
+
+| Integration | Description | Data Import | System Model |  
+| ----------- | ----------- | ----------- | ------------ |
+| [Application Template](https://github.com/normalframework/applications-template) | Starting point for new apps.  Includes example hooks for testing point writeability and Postgres import | ✔️ | |
+| [Desigo CC](https://github.com/normalframework/app-desigocc) | Retrieve data from a Desigo CC NORIS API | ✔️ | |
