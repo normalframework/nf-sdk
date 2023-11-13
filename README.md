@@ -39,7 +39,7 @@ Do More
 
 Normal offers several pre-built integrations with other systems under permissive licenses.  These can be quickly installed using our Application SDK.
 
-| Integration | Description | Data Import | System Model |  
-| ----------- | ----------- | ----------- | ------------ |
+| Integration | Description | Read Data   | Write Data | System Model |  
+| ----------- | ----------- | ----------- | ------------ | - |
 | [Application Template](https://github.com/normalframework/applications-template) | Starting point for new apps.  Includes example hooks for testing point writeability and Postgres import | ✔️ | |
 | [Desigo CC](https://github.com/normalframework/app-desigocc) | Retrieve data from a Desigo CC NORIS API | ✔️ | |
