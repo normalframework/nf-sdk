@@ -5,6 +5,8 @@ file which you can use to run a local copy of NF; and generated client
 libraries for Javascript and Python for the gRPC APIs.  You can also
 use the REST API directly.
 
+[🔗  Developer Docs](https://docs2.normal.dev)
+
 Installation Instructions: Ubuntu
 -------------------------
 
