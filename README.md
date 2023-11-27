@@ -1,5 +1,4 @@
-NF SDK
-=====
+<img src="logo_nf.png" width="50%"/>
 
 Welcome to the NF SDK.  This repository contains a `docker-compose`
 file which you can use to run a local copy of NF; and generated client
