@@ -4,7 +4,9 @@ Welcome to the NF SDK.  This repository contains a `docker-compose`
 file which you can use to run a local copy of NF; and examples of
 using the REST API.
 
-[🔗  Developer Docs](https://docs2.normal.dev)
+For more information about see our main webpage and developer documentation.
+
+[Normal Framework](https://www.normal.dev) | [🔗  Developer Docs](https://docs2.normal.dev)
 
 Installation Instructions: Ubuntu
 -------------------------
