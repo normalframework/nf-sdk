@@ -46,3 +46,4 @@ Normal offers several pre-built integrations with other systems under permissive
 | [Application Template](https://github.com/normalframework/applications-template) | Starting point for new apps.  Includes example hooks for testing point writeability and Postgres import | ✔️ | | |
 | [Desigo CC](https://github.com/normalframework/app-desigocc) | Retrieve data from a Desigo CC NORIS API | ✔️ | | |
 | [Archilogic](https://github.com/normalframework/app-archilogic) | Display data on a floor plan | | | | ✔️ | 
+| [Guideline 36](https://github.com/normalframework/gl36-demo/tree/master) | Implement certain [Guideline 36](https://www.ashrae.org/news/ashraejournal/guideline-36-2021-what-s-new-and-why-it-s-important) sequences | | ✔️ | | ✔️ |
