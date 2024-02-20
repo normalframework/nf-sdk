@@ -5,7 +5,7 @@ services:
   # the main container which runs all the NF services, load balancer,
   # and management console.
   nf:
-    image: normalframework.azurecr.io/normalframework/nf-full:3.2
+    image: normalframework.azurecr.io/normalframework/nf-full:3.3.0-3
     network_mode: host
     depends_on:
       - redis
@@ -19,6 +19,7 @@ services:
       # set it behind a reverse proxy
       # - APPLICATION_PATH=/http-8080/localhost
       - MQTT_BROKER=localhost
+      - PREFIX_LAYER_ATTRIBUTES=1
       # set to enable username/password on the admin console + API
       # - CONSOLE_USERNAME=admin
       # - CONSOLE_PASSWORD=pw
@@ -75,8 +76,6 @@ services:
 
   grafana:
     image: grafana/grafana-enterprise
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=password
     volumes:
       - ./provisioning:/etc/grafana/provisioning
       - ./dashboards:/etc/dashboards

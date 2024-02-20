@@ -29,147 +29,8 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "continuous-BlPu"
-          },
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            },
-            "inspect": false
-          },
-          "fieldMinMax": false,
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unitScale": true
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "0 Classes"
-            },
-            "properties": [
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "mode": "gradient",
-                  "type": "gauge",
-                  "valueDisplayMode": "color"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "1-5 Classes"
-            },
-            "properties": [
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "mode": "gradient",
-                  "type": "gauge",
-                  "valueDisplayMode": "text"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "6+ Classes"
-            },
-            "properties": [
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "mode": "gradient",
-                  "type": "gauge",
-                  "valueDisplayMode": "text"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 0
-      },
-      "id": 2,
-      "options": {
-        "cellHeight": "sm",
-        "footer": {
-          "countRows": false,
-          "fields": "",
-          "reducer": [
-            "sum"
-          ],
-          "show": false
-        },
-        "showHeader": true,
-        "sortBy": [
-          {
-            "desc": true,
-            "displayName": "points_count"
-          }
-        ]
-      },
-      "pluginVersion": "10.3.1",
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "normal-timescaledb"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT et.name as \"Equipment Type\", e.equips_count as \"Count\", p.points_count as \"Points\", s.\"0 Classes\", s.\"1-5 Classes\", s.\"6+ Classes\"\nFROM equipment_types et\n         JOIN (SELECT equip_type, count(*) as points_count\n               FROM model_metadata\n               GROUP BY equip_type) p ON et.id = p.equip_type\n         JOIN (SELECT equiptypeid, count(*) as equips_count\n               FROM equips\n               GROUP BY equiptypeid) e ON et.id = e.equiptypeid\n         JOIN (SELECT equiptypeid,\n                      count(*) filter ( where count = 0 )            as \"0 Classes\",\n                      count(*) filter ( where count between 1 and 5) AS \"1-5 Classes\",\n                      count(*) filter ( where count >= 6 )           as \"6+ Classes\"\n               FROM equips_points_stat\n               GROUP BY equiptypeid) as s ON et.id = s.equiptypeid\n",
-          "refId": "A",
-          "sql": {
-            "columns": [
-              {
-                "parameters": [],
-                "type": "function"
-              }
-            ],
-            "groupBy": [
-              {
-                "property": {
-                  "type": "string"
-                },
-                "type": "groupBy"
-              }
-            ],
-            "limit": 50
-          }
-        }
-      ],
-      "title": "Equipment Schedule",
-      "type": "table"
-    },
-    {
-      "datasource": {
-        "type": "grafana-postgresql-datasource",
-        "uid": "normal-timescaledb"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "continuous-BlPu"
+            "mode": "palette-classic",
+            "seriesBy": "last"
           },
           "custom": {
             "axisBorderShow": false,
@@ -177,16 +38,30 @@
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
-            "fillOpacity": 69,
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
               "tooltip": false,
               "viz": false
             },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineStyle": {
+              "fill": "solid"
+            },
             "lineWidth": 1,
+            "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
             },
             "thresholdsStyle": {
               "mode": "off"
@@ -208,36 +83,24 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
+        "h": 10,
+        "w": 24,
+        "x": 0,
         "y": 0
       },
       "id": 1,
       "options": {
-        "barRadius": 0,
-        "barWidth": 0.5,
-        "colorByField": "points",
-        "fullHighlight": false,
-        "groupWidth": 0.7,
         "legend": {
           "calcs": [],
           "displayMode": "list",
           "placement": "bottom",
-          "showLegend": false
+          "showLegend": true
         },
-        "orientation": "horizontal",
-        "showValue": "auto",
-        "stacking": "none",
         "tooltip": {
-          "mode": "single",
+          "mode": "multi",
           "sort": "none"
-        },
-        "xField": "class",
-        "xTickLabelRotation": 0,
-        "xTickLabelSpacing": 100
+        }
       },
-      "pluginVersion": "10.3.1",
       "targets": [
         {
           "datasource": {
@@ -247,7 +110,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT class, count(*) points FROM model_metadata\n                       WHERE class IS NOT null\n                       GROUP BY class\nORDER BY points DESC",
+          "rawSql": "SELECT\n  mm.equipref,\n  m.value as \"Value\",\n  $__time(m.time)\nFROM\n  metrics m\n  JOIN model_metadata mm ON m.metric_id = mm.metric_id\n  JOIN bacnet_metadata bm ON m.metric_id = bm.metric_id\nWHERE\n  $__timeFilter(m.time)\n  AND mm.class IN($class)\nORDER BY\n  time",
           "refId": "A",
           "sql": {
             "columns": [
@@ -268,15 +131,175 @@
           }
         }
       ],
-      "title": "Point Classes",
-      "type": "barchart"
+      "title": "Equip",
+      "transformations": [
+        {
+          "id": "prepareTimeSeries",
+          "options": {
+            "format": "multi"
+          }
+        }
+      ],
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "normal-timescaledb"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic",
+            "seriesBy": "last"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "fieldMinMax": false,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unitScale": true
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 10
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "normal-timescaledb"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  bm.object_name,\n  m.value as \"Value\",\n  $__time(m.time)\nFROM\n  metrics m\n  JOIN model_metadata mm ON m.metric_id = mm.metric_id\n  JOIN bacnet_metadata bm ON m.metric_id = bm.metric_id\nWHERE\n  $__timeFilter(m.time)\n  AND mm.class IN ($class)\nORDER BY\n  time",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "Object Name",
+      "transformations": [
+        {
+          "id": "prepareTimeSeries",
+          "options": {
+            "format": "multi"
+          }
+        }
+      ],
+      "type": "timeseries"
     }
   ],
   "refresh": "",
   "schemaVersion": 39,
   "tags": [],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "current": {
+          "selected": true,
+          "text": [
+            "hvacMode-sp",
+            "perimeterHeat-cmd"
+          ],
+          "value": [
+            "hvacMode-sp",
+            "perimeterHeat-cmd"
+          ]
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "normal-timescaledb"
+        },
+        "definition": "SELECT DISTINCT class FROM model_metadata WHERE class IS NOT null",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Class",
+        "multi": true,
+        "name": "class",
+        "options": [],
+        "query": "SELECT DISTINCT class FROM model_metadata WHERE class IS NOT null",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      }
+    ]
   },
   "time": {
     "from": "now-6h",
@@ -284,8 +307,8 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "Equipments",
-  "uid": "e621cd66-8906-480f-9f9c-7baa0a9f6821",
-  "version": 2,
+  "title": "TimeSeries",
+  "uid": "b3474cbc-2aa8-49de-8fa4-68e487bcc026",
+  "version": 3,
   "weekStart": ""
 }
