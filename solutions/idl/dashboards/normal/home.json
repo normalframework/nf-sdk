@@ -216,7 +216,7 @@
       },
       "id": 7,
       "options": {
-        "folderUID": "f88ca726-119d-4950-97c2-0aa292b0a9b0",
+        "folderUID": "normal",
         "includeVars": false,
         "keepTime": false,
         "maxItems": 10,
@@ -228,7 +228,7 @@
         "tags": []
       },
       "pluginVersion": "10.3.1",
-      "title": "Panel Title",
+      "title": "Dashboards",
       "type": "dashlist"
     },
     {
@@ -382,6 +382,21 @@
         }
       ],
       "title": "Equipment Types",
+      "transformations": [
+        {
+          "id": "configFromData",
+          "options": {
+            "configRefId": "A",
+            "mappings": [
+              {
+                "fieldName": "Count",
+                "handlerKey": "max",
+                "reducerId": "max"
+              }
+            ]
+          }
+        }
+      ],
       "type": "table"
     },
     {
