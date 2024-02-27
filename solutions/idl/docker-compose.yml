@@ -60,7 +60,7 @@ services:
      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
     
   historian:
-    image: nfdev.azurecr.io/normalframework/nf-hisotria:develop
+    image: nfdev.azurecr.io/normalframework/nf-historian:develop
     environment:
       - PGDATABASE=postgres
       - PGUSER=postgres
