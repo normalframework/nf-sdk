@@ -5,7 +5,7 @@ services:
   # the main container which runs all the NF services, load balancer,
   # and management console.
   nf:
-    image: normalframework.azurecr.io/normalframework/nf-full:3.3.0-3
+    image: nfdev.azurecr.io/normalframework/nf-full:develop
     network_mode: host
     depends_on:
       - redis
@@ -60,7 +60,7 @@ services:
      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
     
   historian:
-    image: historian
+    image: nfdev.azurecr.io/normalframework/nf-hisotria:develop
     environment:
       - PGDATABASE=postgres
       - PGUSER=postgres
