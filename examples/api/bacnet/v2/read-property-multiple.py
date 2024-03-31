@@ -1,26 +1,16 @@
 """ReadProperty-Multiple example of reading three properties from a single object.
 """
-
-
 import sys
-import os
-import base64
-import requests
-import json
+sys.path.append("../..")
 
-nfurl = os.getenv("NFURL", "http://8.15.101.121:8080")
-device_adr = [8, 27,220, 10, 0xba, 0xc1]
+from helpers import NfClient, print_response
+client = NfClient()
 
-session = requests.Session()
-session.auth = ("admin", "jiECJU8kvLhd7i4VhvDiy4")
-res = session.post(nfurl + "/api/v2/bacnet/confirmed-service", json={
+# device_adr = [8, 27,220, 10, 0xba, 0xc1]
+
+res = client.post("/api/v2/bacnet/confirmed-service", json={
     "device_address": {
-     "mac": "CBvcD7rB",
-     "net": 49998,
-     "adr": "wKgBebrA",
-     "maxApdu": 1476,
-     "deviceId": 4159533,
-     "bbmd": ""
+        "deviceId": 260001,
     },
     "request": {
         "read_property_multiple": {
@@ -49,8 +39,5 @@ res = session.post(nfurl + "/api/v2/bacnet/confirmed-service", json={
         },
     }
 },)
-print(res.headers)
-print ("{}: {}".format(res.status_code, res.headers.get("grpc-message")))
-print (res.content)
-json.dump(res.json(), sys.stdout, indent=2)
+print_response(res)
 

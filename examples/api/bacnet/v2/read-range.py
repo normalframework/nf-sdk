@@ -120,24 +120,16 @@ FirstSequenceNumber in order to start reading the beginning of the log
 
 """
 import sys
-import os
-import base64
-import requests
-import json
+sys.path.append("../..")
 
-nfurl = os.getenv("NFURL", "http://8.15.101.124:8080")
-device_adr = [8, 27,220, 10, 0xba, 0xc1]
+from helpers import NfClient, print_response
+client = NfClient()
 
-session = requests.Session()
-session.auth = ("admin", "jiECJU8kvLhd7i4VhvDiy4")
-res = session.post(nfurl + "/api/v2/bacnet/confirmed-service", json={
+#device_adr = [8, 27,220, 10, 0xba, 0xc1]
+
+res = client.post("/api/v2/bacnet/confirmed-service", json={
     "device_address": {
-     "mac": "CBvcD7rB",
-     "net": 49998,
-     "adr": "wKgBebrA",
-     "maxApdu": 1476,
-     "deviceId": 4159533,
-     "bbmd": ""
+        "deviceId": 260001,
     },
     "request": {
         "read_range": {
@@ -154,6 +146,5 @@ res = session.post(nfurl + "/api/v2/bacnet/confirmed-service", json={
         }
     }
 },)
-print ("{}: {}".format(res.status_code, res.headers.get("grpc-message")))
-json.dump(res.json(), sys.stdout, indent=4)
+print_response(res)
 
