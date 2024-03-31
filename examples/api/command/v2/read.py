@@ -98,7 +98,6 @@ res = client.post("/api/v1/point/query", json={
     "layer": "hpl:bacnet:1",
     "page_size": "25",
 })
-print ("{}: {}".format(res.status_code, res.headers.get("grpc-message")))
 uuids = list(map(lambda x: x["uuid"], res.json()["points"]))
 
 res = client.post("/api/v2/command/read", json={
