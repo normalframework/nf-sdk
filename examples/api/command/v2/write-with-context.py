@@ -14,16 +14,15 @@ command with writes; after 30 seconds, the writes will be
 relinquished.
 
 """
-import os
 import sys
-import json
-import requests
+sys.path.append("../..")
 
-nfurl = os.getenv("NFURL", "http://localhost:8080")
+from helpers import NfClient, print_response
+client = NfClient()
 
 # we just use this to get some example points
 # this requires nf >= 2.1.1 fo rthe structured query interface
-res = requests.post(nfurl + "/api/v1/point/query", data=json.dumps({
+res = client.post("/api/v1/point/query", json={
     "structured_query": {
         "and": [
             {
@@ -41,20 +40,20 @@ res = requests.post(nfurl + "/api/v1/point/query", data=json.dumps({
     },
     "layer": "hpl:bacnet:1",
     "page_size": "15",
-}))
+})
 print ("{}: {}".format(res.status_code, res.headers.get("grpc-message")))
 uuids = list(map(lambda x: x["uuid"], res.json()["points"]))
 
 # get a command context id for this command. if the name is in use,
 # this will return an error instead of allowing you to create two
 # conflicting command contexts.
-cmd = requests.post(nfurl + "/api/v2/command", json={
+cmd = client.post("/api/v2/command", json={
     "name": "test context",
     "duration": "30s",
 })
 command_context_id = (cmd.json())["id"]
 
-res = requests.post(nfurl + "/api/v2/command/write", json={
+res = client.post( "/api/v2/command/write", json={
     "command_id": command_context_id,
     "writes": [ {
         "point": {
@@ -73,4 +72,4 @@ res = requests.post(nfurl + "/api/v2/command/write", json={
     } for u in uuids ],
 })
         
-json.dump(res.json(), sys.stdout, indent=2)
+print_response(res)

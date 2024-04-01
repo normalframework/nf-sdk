@@ -1,0 +1,95 @@
+
+version: "2.2"
+services:
+
+  # the main container which runs all the NF services, load balancer,
+  # and management console.
+  nf:
+    image: nfdev.azurecr.io/normalframework/nf-full:develop
+    network_mode: host
+    depends_on:
+      - redis
+    ports:
+      - "8080:8080"
+    tmpfs:
+      - /run:exec
+      - /etc/nginx/conf.d/
+      - /tmp
+    environment:
+      # set it behind a reverse proxy
+      # - APPLICATION_PATH=/http-8080/localhost
+      - MQTT_BROKER=localhost
+      - PREFIX_LAYER_ATTRIBUTES=1
+      # set to enable username/password on the admin console + API
+      # - CONSOLE_USERNAME=admin
+      # - CONSOLE_PASSWORD=pw
+      
+#  if you want data to be persistent, you need to mount /var in the container
+#  a volume
+#    volumes:
+#      - /tmp/nf:/var
+
+  # Most persistent data is in redis.  This is essentially an
+  #  unmodified upstream with RediSearch and RedisTimeseries installed.
+  redis:
+    ports:
+      - "6379:6379"
+    image: normalframework.azurecr.io/normalframework/redis:3.2
+#    volumes:
+#      - /tmp/nf-redis:/data
+
+  timescaledb:
+    ports:
+      - "5432:5432"
+    image: timescale/timescaledb:latest-pg14
+    environment:
+      - POSTGRES_PASSWORD=password
+# change this to set a persistent data location
+#    volumes:
+#      - /tmp/nf-timescale:/home/postgres/pgdata/data
+    networks:
+      - idlnet
+
+  mosquitto:
+    ports:
+      - "1883:1883"
+    image: eclipse-mosquitto
+    networks:
+      - idlnet
+    volumes:
+     - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+    
+  historian:
+    image: nfdev.azurecr.io/normalframework/nf-historian:develop
+    environment:
+      - PGDATABASE=postgres
+      - PGUSER=postgres
+      - PGPASSWORD=password
+      - PGHOST=timescaledb
+      - MQTT_BROKER=mosquitto
+      - DATA_DIR=/var/nf/sparkplug-sql
+    depends_on:
+      - timescaledb
+      - mosquitto
+    networks:
+      - idlnet
+
+  grafana:
+    image: grafana/grafana-enterprise
+    volumes:
+      - ./provisioning:/etc/grafana/provisioning
+      - ./dashboards:/etc/dashboards
+      - ./grafana.ini:/etc/grafana/grafana.ini
+      - ./assets/logo.svg:/usr/share/grafana/public/img/grafana_icon.svg
+      - ./assets/favicon.ico:/usr/share/grafana/public/img/fav32.png
+      - ./assets/favicon.ico:/usr/share/grafana/public/img/apple-touch-icon.png
+    ports:
+      - "3000:3000"
+    networks:
+      - idlnet
+    
+
+networks:
+  idlnet:
+    name: idlnet
+      

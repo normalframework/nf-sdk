@@ -98,6 +98,7 @@ Example results:
   ],
   "errors": []
 }"""
+<<<<<<< HEAD
 import os
 import sys
 import json
@@ -108,12 +109,27 @@ nfurl = os.getenv("NFURL", "http://localhost:8080")
 # we just use this to get some example points
 # this requires nf >= 2.1.1 fo rthe structured query interface
 res = requests.post(nfurl + "/api/v1/point/query", data=json.dumps({
+=======
+import sys
+sys.path.append("../..")
+
+from helpers import NfClient, print_response
+client = NfClient()
+
+# we just use this to get some example points
+# this requires nf >= 2.1.1 fo rthe structured query interface
+res = client.post("/api/v1/point/query", json={
+>>>>>>> add_auth_to_examples
     "structured_query": {
         "and": [
             {
                 "field": {
                     "property": "device_id",
+<<<<<<< HEAD
                     "numeric": { "min_value": 260001, "max_value": 260001 }
+=======
+                    "text": "260001"
+>>>>>>> add_auth_to_examples
                 }
             },
             {
@@ -125,11 +141,19 @@ res = requests.post(nfurl + "/api/v1/point/query", data=json.dumps({
     },
     "layer": "hpl:bacnet:1",
     "page_size": "15",
+<<<<<<< HEAD
 }))
 print ("{}: {}".format(res.status_code, res.headers.get("grpc-message")))
 uuids = list(map(lambda x: x["uuid"], res.json()["points"]))
 
 res = requests.post(nfurl + "/api/v2/command/write", json={
+=======
+})
+print ("{}: {}".format(res.status_code, res.headers.get("grpc-message")))
+uuids = list(map(lambda x: x["uuid"], res.json()["points"]))
+
+res = client.post("/api/v2/command/write", json={
+>>>>>>> add_auth_to_examples
     "writes": [ {
         "point": {
             "uuid": u,
@@ -147,4 +171,8 @@ res = requests.post(nfurl + "/api/v2/command/write", json={
     } for u in uuids ],
 })
         
+<<<<<<< HEAD
 json.dump(res.json(), sys.stdout, indent=2)
+=======
+print_response(res)
+>>>>>>> add_auth_to_examples
