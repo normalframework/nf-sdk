@@ -4,7 +4,7 @@ services:
 
   # the main container which runs all the NF services, load balancer,
   # and management console.
-  nf:
+  nf: 
     image: normalframework.azurecr.io/normalframework/nf-full:3.4
     network_mode: host
     depends_on:
