@@ -5,12 +5,10 @@ services:
   # the main container which runs all the NF services, load balancer,
   # and management console.
   nf:
-    image: nfdev.azurecr.io/normalframework/nf-full:develop
+    image: normalframework.azurecr.io/normalframework/nf-full:3.4
     network_mode: host
     depends_on:
       - redis
-    ports:
-      - "8080:8080"
     tmpfs:
       - /run:exec
       - /etc/nginx/conf.d/
@@ -34,7 +32,7 @@ services:
   redis:
     ports:
       - "6379:6379"
-    image: normalframework.azurecr.io/normalframework/redis:3.2
+    image: normalframework.azurecr.io/normalframework/redis:3.4
 #    volumes:
 #      - /tmp/nf-redis:/data
 
@@ -60,7 +58,7 @@ services:
      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
     
   historian:
-    image: nfdev.azurecr.io/normalframework/nf-historian:develop
+    image: normalframework.azurecr.io/normalframework/historian:3.4
     environment:
       - PGDATABASE=postgres
       - PGUSER=postgres
