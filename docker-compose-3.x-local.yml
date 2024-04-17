@@ -30,11 +30,7 @@ services:
   # the main container which runs all the NF services, load balancer,
   # and management console.
   nf:
-<<<<<<< HEAD
     image: normalframework.azurecr.io/normalframework/nf-full:3.4
-=======
-    image: normalframework.azurecr.io/normalframework/nf-full:3.1
->>>>>>> develop
     network_mode: host
     depends_on:
       - redis
@@ -42,7 +38,6 @@ services:
       - /run:exec
       - /etc/nginx/conf.d/
       - /tmp
-<<<<<<< HEAD
       # environment:
       # set it behind a reverse proxy
       # - APPLICATION_PATH=/http-8080/localhost
@@ -50,12 +45,6 @@ services:
       # set to enable username/password on the admin console + API
       # - CONSOLE_USERNAME=admin
       # - CONSOLE_PASSWORD=pw
-=======
-    environment:
-      - APPLICATION_PATH=/http-8080/localhost
-      - CONSOLE_USERNAME=admin
-      - CONSOLE_PASSWORD=pw
->>>>>>> develop
       
 #  if you want data to be persistent, you need to mount /var in the container
 #  a volume
@@ -67,14 +56,8 @@ services:
   redis:
     ports:
       - "6379:6379"
-<<<<<<< HEAD
     image: normalframework.azurecr.io/normalframework/redis:3.4
 #    volumes:
 #      - /tmp/nf-redis:/data
-=======
-    image: normalframework.azurecr.io/normalframework/redis:3.1
-    volumes:
-      - /tmp/nf-redis:/data
->>>>>>> develop
 
   
