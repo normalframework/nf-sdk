@@ -4,20 +4,18 @@ NB: this may not work on many controllers, and successfully writing
 the schedule requires understanding what valid values are possible for
 each schedule event.
 """
-
 import sys
-import os
-import base64
-import requests
-import json
+sys.path.append("../..")
 
-nfurl = os.getenv("NFURL", "http://localhost:8080")
-device_adr = [192,168,103,178,0xba, 0xc0]
+from helpers import NfClient, print_response
+client = NfClient()
+
+#device_adr = [192,168,103,178,0xba, 0xc0]
 
 read_request = {
   "deviceAddress": {
       "deviceId": 260001
-      "mac": base64.b64encode(bytes(device_adr)),
+      # "mac": base64.b64encode(bytes(device_adr)),
   },
   "request": {
     "readProperty": {
@@ -30,15 +28,15 @@ read_request = {
     }
   }
 }
-res = requests.post(nfurl + "/api/v2/bacnet/confirmed-service", json=read_request)
-json.dump(res.json(), indent=2)
+res = client.post("/api/v2/bacnet/confirmed-service", json=read_request)
+print_response(res)
 
 
 # writeproperty
 write_request = {
   "deviceAddress": {
       # base64 IP + port for BACnet/ip
-      "mac": base64.b64encode(bytes(device_adr)),
+      # "mac": base64.b64encode(bytes(device_adr)),
       "deviceId": 260001,
   },
   "request": {
@@ -72,6 +70,5 @@ write_request = {
   }
 }
 
-
-res = requests.post(nfurl + "/api/v2/bacnet/confirmed-service", json=write_request)
-json.dump(res.json(), indent=2)
+res = client.post("/api/v2/bacnet/confirmed-service", json=write_request)
+print_response(res)

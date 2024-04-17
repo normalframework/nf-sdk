@@ -6,29 +6,25 @@ which means that all arguments must be sent as query params.
 This unfortunately means that only reading one item per request is
 possible.
 """
-import os
 import sys
-import json
-import requests
-import base64
+sys.path.append("../..")
 
-nfurl = os.getenv("NFURL", "http://localhost:8080")
-device_adr = [192,168,103,178,0xba, 0xc0]
+from helpers import NfClient, print_response
 
-res = requests.get(nfurl + "/api/v1/bacnet/readpropertymultiple", params={
+client = NfClient()
+
+res = client.get("/api/v1/bacnet/readpropertymultiple", params={
     'device_address.device_id': 260001,
-    'device_address.mac': base64.b64encode(bytes(device_adr)),
-        # use net and addr if a routed connection
-        #'net': 0,
-        #'adr': 
+    #'device_address.mac': base64.b64encode(bytes(device_adr)),
+    # use net and addr if a routed connection
+    #'device_address.net': 0,
+    #'device_address.adr': "",
 
     "read_properties.object_id.object_type": "OBJECT_ANALOG_VALUE",
     "read_properties.object_id.instance": 1,
     "read_properties.property_id": "PROP_PRESENT_VALUE",
-    "read_properties.array_index": 4294967295,
+    "read_properties.array_index": 4294967295, # BACNET_ARRAY_ALL
 
 })
-
-print ("{}: {}".format(res.status_code, res.headers.get("grpc-message")))
-json.dump(res.json(), sys.stdout, indent=4)
+print_response(res)
 

@@ -3,17 +3,20 @@
 Note array_index=4294967295 is used for "BACNET_ARRAY_ALL"
 """
 
-import os
-import requests
 import base64
+import sys
+sys.path.append("../..")
 
-nfurl = os.getenv("NFURL", "http://localhost:8080")
-device_adr = [192,168,103,178,0xba, 0xc0]
+from helpers import NfClient, print_response
 
-res = requests.post(nfurl + "/api/v1/bacnet/writeproperty", json={
+client = NfClient()
+
+# device_adr = [192,168,103,178,0xba, 0xc0]
+
+res = client.post("/api/v1/bacnet/writeproperty", json={
     'device_address': {
         'device_id': 260001,
-        'mac': base64.b64encode(bytes(device_adr)),
+        # 'mac': base64.b64encode(bytes(device_adr)),
         # use net and addr if a routed connection
         #'net': 0,
         #'adr': 
@@ -31,5 +34,4 @@ res = requests.post(nfurl + "/api/v1/bacnet/writeproperty", json={
     },
     'priority':12,
 })
-print ("{}: {}".format(res.status_code, res.headers.get("grpc-message")))
-
+print_response(res)

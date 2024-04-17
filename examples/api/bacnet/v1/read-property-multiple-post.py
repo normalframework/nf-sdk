@@ -2,24 +2,25 @@
 
 This is only supported in >= 2.1
 """
-import os
-import sys
-import json
-import requests
 import base64
+import sys
+sys.path.append("../..")
 
-nfurl = os.getenv("NFURL", "http://localhost:8080")
-device_adr = [192,168,103,178,0xba, 0xc0]
+from helpers import NfClient, print_response
 
-res = requests.post(nfurl + "/api/v1/bacnet/readpropertymultiple", json={
+client = NfClient()
+
+# the IP + port of the device to read from, if not using using dynamic binding
+# device_adr = [192,168,103,178,0xba, 0xc0]
+
+res = client.post("/api/v1/bacnet/readpropertymultiple", json={
     'device_address':{
         'device_id': 260001,
-        'mac': base64.b64encode(bytes(device_adr)),
+        #'mac': base64.b64encode(bytes(device_adr)).decode("ascii"),
         # use net and addr if a routed connection
         #'net': 0,
         #'adr': 
     },
-
     'read_properties': [
         {
             'object_id': {
@@ -40,6 +41,5 @@ res = requests.post(nfurl + "/api/v1/bacnet/readpropertymultiple", json={
     ]
 })
 
-print ("{}: {}".format(res.status_code, res.headers.get("grpc-message")))
-json.dump(res.json(), sys.stdout, indent=4)
+print_response(res)
 

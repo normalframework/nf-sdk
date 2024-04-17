@@ -1,18 +1,17 @@
 """WriteProperty using an ApplicationDataValue type
 """
 import sys
-import os
-import base64
-import requests
-import json
+sys.path.append("../..")
 
-nfurl = os.getenv("NFURL", "http://localhost:8080")
-device_adr = [192,168,103,178,0xba, 0xc0]
+from helpers import NfClient, print_response
+client = NfClient()
 
-res = requests.post(nfurl + "/api/v2/bacnet/confirmed-service", json={
+#device_adr = [192,168,103,178,0xba, 0xc0]
+
+res = client.post("/api/v2/bacnet/confirmed-service", json={
     "device_address": {
         "device_id": 260001,
-        "mac": base64.b64encode(bytes(device_adr)),
+        # "mac": base64.b64encode(bytes(device_adr)),
     },
     "request": {
         "write_property": {
@@ -30,6 +29,4 @@ res = requests.post(nfurl + "/api/v2/bacnet/confirmed-service", json={
         },
     }
 },)
-print ("{}: {}".format(res.status_code, res.headers.get("grpc-message")))
-json.dump(res.json(), sys.stdout, indent=4)
-
+print_response(res)
