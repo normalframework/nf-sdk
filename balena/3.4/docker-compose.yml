@@ -7,14 +7,14 @@ volumes:
 
 services:
   redis:
-    image: normalframework.azurecr.io/normalframework/redis:3.4.0-1
+    image: normalframework.azurecr.io/normalframework/redis:3.4.0-7
     ports:
       - "6379:6379"
     volumes:
       - "redis-db:/data"
 
   nf:
-    image: normalframework.azurecr.io/normalframework/nf-full:3.4.0-1
+    image: normalframework.azurecr.io/normalframework/nf-full:3.4.0-7
     network_mode: host
     privileged: true
     environment:
@@ -24,15 +24,3 @@ services:
     volumes:
       - "nf-var:/var/nf"
 
-  openvpn:
-    image: normalframework.azurecr.io/normalframework/openvpn:3
-    network_mode: host
-    cap_add:
-      - NET_ADMIN
-    devices:
-      - "/dev/net/tun:/dev/net/tun"
-    sysctls:
-      - "net.ipv6.conf.all.disable_ipv6=0"
-    volumes:
-      - "openvpn:/openvpn"
-    
