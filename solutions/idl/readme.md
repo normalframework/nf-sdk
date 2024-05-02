@@ -11,13 +11,12 @@ When MQTT Broker environment variable is defined, NF will begin exporting data o
 
 
 ### Overview
-In this example setup, the `Historian` service listens for MQTT events and adds them to the (Timescale)[https://www.timescale.com/] database. (Mosquitto)[https://mosquitto.org/] is the MQTT message broker. The IDL data ultimately resides in the Timescale database which can be queried by dependent services.
-
+In this example setup, the `Historian` service listens for MQTT Sparkplug and adds them to the [Timescale](https://www.timescale.com/) database. [Mosquitto](https://mosquitto.org/) is the MQTT message broker. The IDL data ultimately resides in the Timescale database which can be queried by dependent services.
 
 ### User Interface
-This example setup uses (Grafana)[https://grafana.com/], with a few pre-defined dashboards for displaying the IDL data. Additional Dashboards can be configured through the Grafana User Interface, or by changing the default configuration in the `./dashboards/normal` directory.
+This example setup uses [Grafana](https://grafana.com/), with a few pre-defined dashboards for displaying the IDL data. Additional Dashboards can be configured through the Grafana User Interface, or by changing the default configuration in the `./dashboards/normal` directory.
 
-
+When running locally, you can visit Grafana at http://localhost:3000, and Normal Framework at http://localhost:8080.  You can also connect to TimescaleDB or Mosquitto, to explore connecting other solutions.
 
 
 
