@@ -12,7 +12,7 @@ In this example setup, the `Historian` service listens for MQTT Sparkplug and ad
 ## User Interface
 This example setup uses [Grafana](https://grafana.com/), with a few pre-defined dashboards for displaying the IDL data. Additional Dashboards can be configured through the Grafana User Interface, or by changing the default configuration in the `./dashboards/normal` directory.
 
-When running locally, you can visit Grafana at http://localhost:3000, and Normal Framework at http://localhost:8080.  You can also connect to TimescaleDB or Mosquitto, to explore connecting other solutions.
+When running locally, you can visit Grafana at http://localhost:3000 using the username/password `admin:admin`, and Normal Framework at http://localhost:8080.  You can also connect to TimescaleDB or Mosquitto, to explore connecting other solutions.
 
 ## Moving to Production
 This solution template is intended to be an example of how Normal can be used to build an end-to-end IDL solution.  Before deploying this in production, you should ensure you've considered:
