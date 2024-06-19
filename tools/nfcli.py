@@ -661,6 +661,8 @@ class UpdateCommand(Subcommand):
                 
 class ListObjectsCommand(Subcommand):
     name = "list-bacnet-objects"
+    def add_arguments(self, parser):
+        parser.add_argument("--device_id", default=0)
 
     def as_scalar(self, prop):
         kinds = ["characterString", "double", "real", "signed", "unsigned", "enumerated", "null", "octetString", "boolean"]
@@ -683,30 +685,31 @@ class ListObjectsCommand(Subcommand):
         return output
 
     def run(self, args):
-            object_list = self.get("/api/v1/bacnet/local")
-            headers = set([])
-            for o in object_list["objects"]:
-                row = self.output_object(o, args)
-                headers.update(row.keys())
-            headers = list(headers)
-            sorted_headers = []
-            for h in ("object_id", "object_name", "description", "units"):
-                if h in headers:
-                    sorted_headers.append(h)
-                    del headers[headers.index(h)]
-            headers.sort()
-            sorted_headers.extend(headers)
+        object_list = self.get("/api/v1/bacnet/local", local_device_instance_offset=args.device_id)
+        headers = set([])
+        for o in object_list["objects"]:
+            row = self.output_object(o, args)
+            headers.update(row.keys())
+        headers = list(headers)
+        sorted_headers = []
+        for h in ("object_id", "object_name", "description", "units"):
+            if h in headers:
+                sorted_headers.append(h)
+                del headers[headers.index(h)]
+        headers.sort()
+        sorted_headers.extend(headers)
 
-            writer = csv.DictWriter(sys.stdout, fieldnames=sorted_headers)
-            writer.writeheader()
-            for o in object_list["objects"]:
-                row = self.output_object(o, args)
-                writer.writerow(row)
+        writer = csv.DictWriter(sys.stdout, fieldnames=sorted_headers)
+        writer.writeheader()
+        for o in object_list["objects"]:
+            row = self.output_object(o, args)
+            writer.writerow(row)
 
 class DeleteObjectCommand(Subcommand):
     name = "delete-bacnet-object"
     
     def add_arguments(self, parser):
+        parser.add_argument("--device_id", default=0)
         parser.add_argument("object_id", metavar="object_id", nargs="+", default=[],
                             help="object ids to delete.  for instance, bv.1")
     
@@ -729,6 +732,7 @@ class DeleteObjectCommand(Subcommand):
 
 class ObjectCommand(Subcommand):
     def add_arguments(self, parser):
+        parser.add_argument("--device_id", default=0)
         parser.add_argument("object_id", metavar="object_id", nargs=1, default="",
                             help="object ids to create.  for instance, bv.1 or av")
         parser.add_argument("properties", metavar="properties", nargs="+",
@@ -784,6 +788,7 @@ class ObjectCommand(Subcommand):
                 "property": pid,
                 "value": pval })
         res = self.post("/api/v1/bacnet/local", data={
+            "local_device_instance_offset": args.device_id,
             "object_id": {
                 "object_type": otype,
                 "instance": inst,
