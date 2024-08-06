@@ -103,7 +103,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  bm.object_name,\n  m.value as \"Value\",\n  $__time(m.time)\nFROM\n  metrics m\n  JOIN model_metadata mm ON m.metric_id = mm.metric_id\n  JOIN bacnet_metadata bm ON m.metric_id = bm.metric_id\n  JOIN equipment_types et ON mm.equip_type = et.id\nWHERE\n  $__timeFilter(m.time)\n  and mm.equipref = '$equip'\n  and et.name = '$equipType'\n  and mm.class is not null\norder by\n  time",
+          "rawSql": "SELECT\n  mm.class,\n  m.value as \"Value\",\n  $__time(m.time)\nFROM\n  metrics m\n  JOIN model_metadata mm ON m.metric_id = mm.metric_id\n  JOIN equipment_types et ON mm.equip_type = et.id\nWHERE\n  $__timeFilter(m.time)\n  and mm.equipref = '$equip'\n  and et.name = '$equipType'\n  and mm.class is not null\n  and (mm.class IN ($class) or $class = '')\norder by\n  time",
           "refId": "A",
           "sql": {
             "columns": [
@@ -257,7 +257,7 @@
     "list": [
       {
         "current": {
-          "selected": false,
+          "selected": true,
           "text": "rtu (1)",
           "value": "rtu (1)"
         },
@@ -281,22 +281,46 @@
       },
       {
         "current": {
-          "selected": false,
-          "text": "PERCENT",
-          "value": "PERCENT"
+          "selected": true,
+          "text": "NO_UNITS",
+          "value": "NO_UNITS"
         },
         "datasource": {
           "type": "grafana-postgresql-datasource",
           "uid": "normal-timescaledb"
         },
-        "definition": "SELECT distinct equipref FROM model_metadata",
+        "definition": "SELECT distinct mm.equipref FROM model_metadata  mm\n                         join equipment_types et on mm.equip_type = et.id\n                         where et.name = '$equipType'",
         "hide": 0,
         "includeAll": false,
         "label": "Equip",
         "multi": false,
         "name": "equip",
         "options": [],
-        "query": "SELECT distinct equipref FROM model_metadata",
+        "query": "SELECT distinct mm.equipref FROM model_metadata  mm\n                         join equipment_types et on mm.equip_type = et.id\n                         where et.name = '$equipType'",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": [],
+          "value": []
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "normal-timescaledb"
+        },
+        "definition": "SELECT distinct mm.class FROM model_metadata  mm\n                         join equipment_types et on mm.equip_type = et.id\n                         where et.name = '$equipType' and mm.equipref = '$equip' and mm.class is not null",
+        "hide": 0,
+        "includeAll": false,
+        "label": "class",
+        "multi": true,
+        "name": "class",
+        "options": [],
+        "query": "SELECT distinct mm.class FROM model_metadata  mm\n                         join equipment_types et on mm.equip_type = et.id\n                         where et.name = '$equipType' and mm.equipref = '$equip' and mm.class is not null",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
@@ -313,6 +337,6 @@
   "timezone": "browser",
   "title": "Equipment TimeSeries",
   "uid": "fdu0bcp6imrr4b",
-  "version": 5,
+  "version": 1,
   "weekStart": ""
 }
