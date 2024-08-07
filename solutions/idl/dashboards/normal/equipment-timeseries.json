@@ -257,9 +257,7 @@
     "list": [
       {
         "current": {
-          "selected": false,
-          "text": "ahu (1)",
-          "value": "ahu (1)"
+          "selected": false
         },
         "datasource": {
           "type": "grafana-postgresql-datasource",
@@ -284,10 +282,10 @@
         "current": {
           "selected": true,
           "text": [
-            "AHU-1"
+            "All"
           ],
           "value": [
-            "AHU-1"
+            "$__all"
           ]
         },
         "datasource": {
@@ -369,8 +367,8 @@
       {
         "current": {
           "selected": true,
-          "text": "Object Name",
-          "value": "pm.name"
+          "text": "Class",
+          "value": "mm.class"
         },
         "hide": 0,
         "includeAll": false,
@@ -379,12 +377,12 @@
         "name": "label",
         "options": [
           {
-            "selected": false,
+            "selected": true,
             "text": "Class",
             "value": "mm.class"
           },
           {
-            "selected": true,
+            "selected": false,
             "text": "Object Name",
             "value": "pm.name"
           }
@@ -404,6 +402,6 @@
   "timezone": "browser",
   "title": "Equipment TimeSeries",
   "uid": "fdu0bcp6imrr4b",
-  "version": 8,
+  "version": 1,
   "weekStart": ""
 }
