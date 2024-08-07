@@ -77,8 +77,7 @@
                 "value": null
               }
             ]
-          },
-          "unitScale": true
+          }
         },
         "overrides": []
       },
@@ -198,8 +197,7 @@
                 "value": null
               }
             ]
-          },
-          "unitScale": true
+          }
         },
         "overrides": []
       },
@@ -231,7 +229,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  bm.object_name,\n  m.value as \"Value\",\n  $__time(m.time)\nFROM\n  metrics m\n  JOIN model_metadata mm ON m.metric_id = mm.metric_id\n  JOIN bacnet_metadata bm ON m.metric_id = bm.metric_id\nWHERE\n  $__timeFilter(m.time)\n  AND mm.class IN ($class)\nORDER BY\n  time",
+          "rawSql": "SELECT\n  pm.name,\n  m.value as \"Value\",\n  $__time(m.time)\nFROM\n  metrics m\n  JOIN model_metadata mm ON m.metric_id = mm.metric_id\n  JOIN point_metadata pm ON m.metric_id = pm.metric_id\nWHERE\n  $__timeFilter(m.time)\n  AND mm.class IN ($class)\nORDER BY\n  time",
           "refId": "A",
           "sql": {
             "columns": [
@@ -273,12 +271,10 @@
         "current": {
           "selected": true,
           "text": [
-            "hvacMode-sp",
-            "perimeterHeat-cmd"
+            "discharge-air-flow-sensor"
           ],
           "value": [
-            "hvacMode-sp",
-            "perimeterHeat-cmd"
+            "discharge-air-flow-sensor"
           ]
         },
         "datasource": {
@@ -309,6 +305,6 @@
   "timezone": "",
   "title": "TimeSeries",
   "uid": "b3474cbc-2aa8-49de-8fa4-68e487bcc026",
-  "version": 3,
+  "version": 4,
   "weekStart": ""
 }
