@@ -103,7 +103,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  mm.class,\n  m.value as \"Value\",\n  $__time(m.time)\nFROM\n  metrics m\n  JOIN model_metadata mm ON m.metric_id = mm.metric_id\n  JOIN equipment_types et ON mm.equip_type = et.id\nWHERE\n  $__timeFilter(m.time)\n  and mm.equipref = '$equip'\n  and et.name = '$equipType'\n  and mm.class is not null\n  and (mm.class IN ($class) or $class = '')\norder by\n  time",
+          "rawSql": "SELECT\n  $label,\n  m.value as \"Value\",\n  $__time(m.time)\nFROM\n  metrics m\n  JOIN model_metadata mm ON m.metric_id = mm.metric_id\n  JOIN bacnet_metadata bm ON m.metric_id = bm.metric_id\n  JOIN equipment_types et ON mm.equip_type = et.id\nWHERE\n  $__timeFilter(m.time)\n  and ( mm.equipref IN ($equip) or '${equip:csv}' = '''')\n  and (et.name = '$equipType' or '$equipType' = '')\n  and mm.class is not null\n  and (mm.class IN ($class) or  '${class:csv}' = '''')\norder by\n  time",
           "refId": "A",
           "sql": {
             "columns": [
@@ -218,7 +218,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  bm.object_name,\n  m.value as \"Value\",\n  $__time(m.time)\nFROM\n  metrics m\n  JOIN model_metadata mm ON m.metric_id = mm.metric_id\n  JOIN bacnet_metadata bm ON m.metric_id = bm.metric_id\n  JOIN equipment_types et ON mm.equip_type = et.id\nWHERE\n  $__timeFilter(m.time)\n  and mm.equipref = '$equip'\n  and et.name = '$equipType'\n  and mm.class is null\norder by\n  time",
+          "rawSql": "SELECT\n  bm.object_name,\n  m.value as \"Value\",\n  $__time(m.time)\nFROM\n  metrics m\n  JOIN model_metadata mm ON m.metric_id = mm.metric_id\n  JOIN bacnet_metadata bm ON m.metric_id = bm.metric_id\n  JOIN equipment_types et ON mm.equip_type = et.id\nWHERE\n   $__timeFilter(m.time)\n  and ( mm.equipref IN ($equip) or '${equip:csv}' = '''')\n  and (et.name = '$equipType' or '$equipType' = '')\n  and mm.class is null\norder by\n  time",
           "refId": "A",
           "sql": {
             "columns": [
@@ -268,7 +268,7 @@
         "definition": "SELECT name FROM equipment_types",
         "hide": 0,
         "includeAll": false,
-        "label": "EquipType",
+        "label": "Equip Type",
         "multi": false,
         "name": "equipType",
         "options": [],
@@ -280,23 +280,86 @@
         "type": "query"
       },
       {
+        "allValue": "''",
         "current": {
           "selected": true,
-          "text": "NO_UNITS",
-          "value": "NO_UNITS"
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
         },
         "datasource": {
           "type": "grafana-postgresql-datasource",
           "uid": "normal-timescaledb"
         },
-        "definition": "SELECT distinct mm.equipref FROM model_metadata  mm\n                         join equipment_types et on mm.equip_type = et.id\n                         where et.name = '$equipType'",
+        "definition": "SELECT distinct mm.equipref FROM model_metadata  mm\n                         join equipment_types et on mm.equip_type = et.id\n                         where et.name = '$equipType' or '$equipType' = ''",
         "hide": 0,
-        "includeAll": false,
+        "includeAll": true,
         "label": "Equip",
-        "multi": false,
+        "multi": true,
         "name": "equip",
         "options": [],
-        "query": "SELECT distinct mm.equipref FROM model_metadata  mm\n                         join equipment_types et on mm.equip_type = et.id\n                         where et.name = '$equipType'",
+        "query": "SELECT distinct mm.equipref FROM model_metadata  mm\n                         join equipment_types et on mm.equip_type = et.id\n                         where et.name = '$equipType' or '$equipType' = ''",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "allValue": "''",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "normal-timescaledb"
+        },
+        "definition": "SELECT distinct mm.class\nFROM model_metadata mm\n         join equipment_types et on mm.equip_type = et.id\nwhere (et.name = '$equipType' or '$equipType' = '')\n  and (mm.equipref IN ($equip) or '${equip:csv}' = '''')\n  and mm.class is not null\n",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Class",
+        "multi": true,
+        "name": "class",
+        "options": [],
+        "query": "SELECT distinct mm.class\nFROM model_metadata mm\n         join equipment_types et on mm.equip_type = et.id\nwhere (et.name = '$equipType' or '$equipType' = '')\n  and (mm.equipref IN ($equip) or '${equip:csv}' = '''')\n  and mm.class is not null\n",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "allValue": "''",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "normal-timescaledb"
+        },
+        "definition": "SELECT DISTINCT bm.object_name\nFROM bacnet_metadata bm\n         JOIN model_metadata mm ON bm.metric_id = mm.metric_id\n         JOIN equipment_types et ON mm.equip_type = et.id\nWHERE (mm.equipref IN ($equip) or '${equip:csv}' = '''')\n  and (et.name = '$equipType' or '$equipType' = '')",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Object Name",
+        "multi": true,
+        "name": "objectName",
+        "options": [],
+        "query": "SELECT DISTINCT bm.object_name\nFROM bacnet_metadata bm\n         JOIN model_metadata mm ON bm.metric_id = mm.metric_id\n         JOIN equipment_types et ON mm.equip_type = et.id\nWHERE (mm.equipref IN ($equip) or '${equip:csv}' = '''')\n  and (et.name = '$equipType' or '$equipType' = '')",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
@@ -306,26 +369,30 @@
       {
         "current": {
           "selected": true,
-          "text": [],
-          "value": []
+          "text": "Object Name",
+          "value": "bm.object_name"
         },
-        "datasource": {
-          "type": "grafana-postgresql-datasource",
-          "uid": "normal-timescaledb"
-        },
-        "definition": "SELECT distinct mm.class FROM model_metadata  mm\n                         join equipment_types et on mm.equip_type = et.id\n                         where et.name = '$equipType' and mm.equipref = '$equip' and mm.class is not null",
         "hide": 0,
         "includeAll": false,
-        "label": "class",
-        "multi": true,
-        "name": "class",
-        "options": [],
-        "query": "SELECT distinct mm.class FROM model_metadata  mm\n                         join equipment_types et on mm.equip_type = et.id\n                         where et.name = '$equipType' and mm.equipref = '$equip' and mm.class is not null",
-        "refresh": 1,
-        "regex": "",
+        "label": "Label",
+        "multi": false,
+        "name": "label",
+        "options": [
+          {
+            "selected": false,
+            "text": "Class",
+            "value": "mm.class"
+          },
+          {
+            "selected": true,
+            "text": "Object Name",
+            "value": "bm.object_name"
+          }
+        ],
+        "query": "Class : mm.class,Object Name : bm.object_name",
+        "queryValue": "",
         "skipUrlSync": false,
-        "sort": 0,
-        "type": "query"
+        "type": "custom"
       }
     ]
   },
@@ -337,6 +404,6 @@
   "timezone": "browser",
   "title": "Equipment TimeSeries",
   "uid": "fdu0bcp6imrr4b",
-  "version": 1,
+  "version": 6,
   "weekStart": ""
 }
