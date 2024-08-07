@@ -103,7 +103,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  mm.equipref || ' - ' || $label as \"Label\",\n  m.value as \"Value\",\n  $__time(m.time)\nFROM\n  metrics m\n  JOIN model_metadata mm ON m.metric_id = mm.metric_id\n  JOIN point_metadata pm ON m.metric_id = pm.metric_id\n  JOIN equipment_types et ON mm.equip_type = et.id\nWHERE\n  $__timeFilter(m.time)\n  and ( mm.equipref IN ($equip) or '${equip:csv}' = '''')\n  and (et.name = '$equipType' or '$equipType' = '')\n  and mm.class is not null\n  and (mm.class IN ($class) or  '${class:csv}' = '''')\norder by\n  time",
+          "rawSql": "SELECT\n  mm.equipref || ' - ' || $label as \"Label\",\n  m.value as \"Value\",\n  $__time(m.time)\nFROM\n  metrics m\n  JOIN model_metadata mm ON m.metric_id = mm.metric_id\n  JOIN point_metadata pm ON m.metric_id = pm.metric_id\n  JOIN equipment_types et ON mm.equip_type = et.id\nWHERE\n  $__timeFilter(m.time)\n  and ( mm.equipref IN ($equip) or '${equip:csv}' = '''')\n  and (et.name = '$equipType' or '$equipType' = '')\n  and mm.class is not null\n  and (mm.class IN ($class) or  '${class:csv}' = '''')\n  and (pm.name IN ($objectName) or  '${objectName:csv}' = '''')\norder by\n  time",
           "refId": "A",
           "sql": {
             "columns": [
@@ -218,7 +218,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  mm.equipref || ' - ' || pm.name,\n  m.value as \"Value\",\n  $__time(m.time)\nFROM\n  metrics m\n  JOIN model_metadata mm ON m.metric_id = mm.metric_id\n  JOIN point_metadata pm ON m.metric_id = pm.metric_id\n  JOIN equipment_types et ON mm.equip_type = et.id\nWHERE\n   $__timeFilter(m.time)\n  and ( mm.equipref IN ($equip) or '${equip:csv}' = '''')\n  and (et.name = '$equipType' or '$equipType' = '')\n  and mm.class is null\norder by\n  time",
+          "rawSql": "SELECT\n  mm.equipref || ' - ' || pm.name,\n  m.value as \"Value\",\n  $__time(m.time)\nFROM\n  metrics m\n  JOIN model_metadata mm ON m.metric_id = mm.metric_id\n  JOIN point_metadata pm ON m.metric_id = pm.metric_id\n  JOIN equipment_types et ON mm.equip_type = et.id\nWHERE\n   $__timeFilter(m.time)\n  and ( mm.equipref IN ($equip) or '${equip:csv}' = '''')\n  and (et.name = '$equipType' or '$equipType' = '')\n  and mm.class is null\n  and (pm.name IN ($objectName) or  '${objectName:csv}' = '''')\norder by\n  time",
           "refId": "A",
           "sql": {
             "columns": [
@@ -402,6 +402,6 @@
   "timezone": "browser",
   "title": "Equipment TimeSeries",
   "uid": "fdu0bcp6imrr4b",
-  "version": 1,
+  "version": 9,
   "weekStart": ""
 }
