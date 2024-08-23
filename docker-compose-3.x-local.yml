@@ -30,34 +30,72 @@ services:
   # the main container which runs all the NF services, load balancer,
   # and management console.
   nf:
-    image: normalframework.azurecr.io/normalframework/nf-full:3.4
+    image: normalframework.azurecr.io/normalframework/nf-full:3.5
     network_mode: host
     depends_on:
       - redis
-    tmpfs:
-      - /run:exec
-      - /etc/nginx/conf.d/
-      - /tmp
-      # environment:
-      # set it behind a reverse proxy
-      # - APPLICATION_PATH=/http-8080/localhost
 
-      # set to enable username/password on the admin console + API
-      # - CONSOLE_USERNAME=admin
-      # - CONSOLE_PASSWORD=pw
-      
-#  if you want data to be persistent, you need to mount /var in the container
-#  a volume
-#    volumes:
-#      - /tmp/nf:/var
+    ##
+    ## Other configuration options
+    ##   Depending on your environment, you may need to enable and adjust some of these options.
+    ##   For production use, most of these should be configured and set appropriately.
+
+    ## set a persistent volume for NF data.  required or else state will disappear after a restart
+    volumes:
+      - /tmp/nf:/var
+
+    ## have docker always restart the container if it crashes
+    # restart: always
+
+    ## Set basic auth on the management console and enable API token generate.
+    ## change the secret before putting in production.
+    ## Otherwise access to the management console is unauthenticated
+    # environment:
+    #   - CONSOLE_USERNAME=admin
+    #   - CONSOLE_PASSWORD=pw
+    #   - TOKEN_SIGNING_SECRET=rTKSj0fF6nKSHsunIhVoKg1XTv5zRrOeFrFnGsHCU2wKFQGT
+
+    ## Set memory and CPU limits so Linux kills the container instead of locking up
+    # mem_limit: 1024m
+    # cpus: 2.0
+    
+    ## If these options are uncommented, NF will install iptables
+    ## firewall rules to disallow access to redis and on the specified
+    ## interface.
+    # 
+    # cap_add:
+    #  - NET_ADMIN
+    # environment:
+    #  - NORMAL_FIREWALL_INTERFACE=enp1s0
+
+    ## Enable these options to mount the container read-only.  This is
+    ## probably more secure but prevents you from making changes
+    ## within the container (other than what is on a volume mount)
+    # read_only: true
+    # tmpfs:
+    #   - /run:exec
+    #   - /etc/nginx/conf.d/
+    #   - /tmp
+    # environment:
+    #   - S6_READ_ONLY_ROOT=1    
+
+    ## If Normal will be placed behind a reverse proxy such as a WAF,
+    ## set the path it will be accessed at here so that links will be generated correctly.
+    # environment:
+    #   - APPLICATION_PATH=/http-8080/localhost
+
 
   # Most persistent data is in redis.  This is essentially an
   #  unmodified upstream with RediSearch and RedisTimeseries installed.
   redis:
     ports:
       - "6379:6379"
-    image: normalframework.azurecr.io/normalframework/redis:3.4
-#    volumes:
-#      - /tmp/nf-redis:/data
+    image: normalframework.azurecr.io/normalframework/redis:3.5
 
+    ## set this or else the point database will not persist
+    # volumes:
+    #   - /tmp/nf-redis:/data
   
+    ## Set memory and CPU limits so Linux kills the container instead of locking up
+    # mem_limit: 1024m
+    # cpus: 2.0
