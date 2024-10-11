@@ -30,7 +30,7 @@ services:
   # the main container which runs all the NF services, load balancer,
   # and management console.
   nf:
-    image: normalframework.azurecr.io/normalframework/nf-full:3.5
+    image: normalframework.azurecr.io/normalframework/nf-full:3.7
     network_mode: host
     depends_on:
       - redis
@@ -90,7 +90,7 @@ services:
   redis:
     ports:
       - "6379:6379"
-    image: normalframework.azurecr.io/normalframework/redis:3.5
+    image: normalframework.azurecr.io/normalframework/redis:3.7
 
     ## set this or else the point database will not persist
     # volumes:
