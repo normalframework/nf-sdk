@@ -24,6 +24,7 @@ class JsonOauth(requests.auth.AuthBase):
         r.content
         r.close()
 
+
         res = requests.post(self.base + "/api/v1/auth/token", json={
             "client_id": self.oauth[0],
             "client_secret": self.oauth[1],
@@ -34,7 +35,7 @@ class JsonOauth(requests.auth.AuthBase):
             raise Exception("Invalid authentication: ")
 
         info = res.json()
-        self.token = info["accessToken"]
+        self.token = info.get("accessToken", info.get("access_token"))
 
         prep = r.request.copy()
         prep.headers["Authorization"] = "Bearer " + self.token
