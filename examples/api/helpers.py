@@ -67,7 +67,7 @@ class NfClient(object):
         parser.add_argument("--client-secret", default=os.getenv("NF_CLIENT_SECRET"))
         parser.add_argument("-u", "--user")
         parser.add_argument("--url", default=os.getenv("NFURL", "http://localhost:8080"))
-        args = parser.parse_args()
+        args, ignored = parser.parse_known_args()
 
 
         self.base = args.url.rstrip("/")
