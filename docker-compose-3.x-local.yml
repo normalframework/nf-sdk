@@ -31,6 +31,11 @@ services:
   # and management console.
   nf:
     image: normalframework.azurecr.io/normalframework/nf-full:3.7
+    # a debug version of each release is available which has additional
+    # packages for debugging installed (like nmap, tcpdump, and python), and
+    # also runs an ssh server on port 22 with a default username/password of root/password.
+    # don't use in production!
+    # image: normalframework.azurecr.io/normalframework/nf-debug:3.7
     network_mode: host
     depends_on:
       - redis
