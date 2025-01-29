@@ -30,12 +30,17 @@ services:
   # the main container which runs all the NF services, load balancer,
   # and management console.
   nf:
-    image: normalframework.azurecr.io/normalframework/nf-full:3.7
-    # a debug version of each release is available which has additional
-    # packages for debugging installed (like nmap, tcpdump, and python), and
-    # also runs an ssh server on port 22 with a default username/password of root/password.
+    image: normal.azurecr.io/normalframework/nf-full:3.8
+
+    # use this if you have access to an enterprise license
+    #image: normalframework.azurecr.io/normalframework/nf-full:3.8
+    
+    # a debug version of each release is available for enterprise
+    # customers, which has additional packages for debugging installed
+    # (like nmap, tcpdump, and python), and also runs an ssh server on
+    # port 22 with a default username/password of root/password.
     # don't use in production!
-    # image: normalframework.azurecr.io/normalframework/nf-debug:3.7
+    # image: normalframework.azurecr.io/normalframework/nf-debug:3.8
     network_mode: host
     depends_on:
       - redis
@@ -95,7 +100,8 @@ services:
   redis:
     ports:
       - "6379:6379"
-    image: normalframework.azurecr.io/normalframework/redis:3.7
+    image: normal.azurecr.io/normalframework/redis:3.8
+    # image: normalframework.azurecr.io/normalframework/redis:3.8
 
     ## set this or else the point database will not persist
     # volumes:

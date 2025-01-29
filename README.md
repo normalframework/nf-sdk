@@ -6,13 +6,13 @@ using the REST API.
 
 For more information about see our main webpage and developer documentation.
 
-[Normal Framework](https://www.normal.dev) | [🔗  Developer Docs](https://docs2.normal.dev)
+[Normal Framework](https://www.normal.dev) | [🔗 Portal](https://portal.normal-online.net) | [🔗  Developer Docs](https://docs2.normal.dev) 
 
 Installation Instructions: Ubuntu
 -------------------------
 
 First, install Docker
-log into the Azure ACR repository using the credentials you obtained from Normal:
+log into the Azure ACR repository using the credentials you obtained from Normal.  These are available through the portal.
 
 ```
 $ sudo apt install docker docker-compose git
