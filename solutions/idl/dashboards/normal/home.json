@@ -18,8 +18,8 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
+  "id": 3,
   "links": [],
-  "liveNow": false,
   "panels": [
     {
       "collapsed": false,
@@ -53,8 +53,7 @@
                 "value": null
               }
             ]
-          },
-          "unitScale": true
+          }
         },
         "overrides": []
       },
@@ -80,7 +79,7 @@
         "showThresholdMarkers": false,
         "sizing": "auto"
       },
-      "pluginVersion": "10.3.1",
+      "pluginVersion": "11.5.0",
       "targets": [
         {
           "datasource": {
@@ -90,7 +89,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT p.count + e.count as \"Total\", p.count as \"Trended\", e.count as \"Equips\", m.count as \"Labeled\"\nFROM (SELECT COUNT(*)\n      FROM metadata) as p\n         CROSS JOIN (SELECT COUNT(*)\n                     FROM model_metadata\n                     WHERE class IS NOT NUlL) as m\n         CROSS JOIN (SELECT COUNT(*)\n                     FROM equips) as e",
+          "rawSql": "SELECT p.count as \"Total\", t.count as \"Trended\", e.count as \"Equips\", m.count as \"Labeled\"\nFROM (SELECT COUNT(*)\n      FROM points) as p\n         CROSS JOIN (SELECT COUNT(*)\n                     FROM points\n                     where period <> '0 years 0 mons 0 days 0 hours 0 mins 0.0 secs') as t\n         CROSS JOIN (SELECT COUNT(*)\n                     FROM layer_model lm\n                              join points p on p.id = lm.point_id\n                     WHERE lm.class IS NOT NULL\n                       and p.point_type = 'POINT') as m\n         CROSS JOIN (SELECT COUNT(*)\n                     FROM points\n                     where point_type = 'EQUIPMENT') as e\n",
           "refId": "A",
           "sql": {
             "columns": [
@@ -133,8 +132,7 @@
             }
           },
           "fieldMinMax": false,
-          "mappings": [],
-          "unitScale": true
+          "mappings": []
         },
         "overrides": []
       },
@@ -166,10 +164,12 @@
           "values": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "single",
           "sort": "none"
         }
       },
+      "pluginVersion": "11.5.0",
       "targets": [
         {
           "datasource": {
@@ -179,7 +179,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT device_vendor_name as metric, count(*) as value  FROM bacnet_metadata\nWHERE object_type = 'OBJECT_DEVICE'\nGROUP BY device_vendor_name\n",
+          "rawSql": "SELECT device_prop_vendor_name as metric, count(*) as value  FROM layer_hpl_bacnet_1\nWHERE type = 'OBJECT_DEVICE'\nGROUP BY device_prop_vendor_name",
           "refId": "A",
           "sql": {
             "columns": [
@@ -204,9 +204,9 @@
       "type": "piechart"
     },
     {
-      "datasource": {
-        "type": "grafana-postgresql-datasource",
-        "uid": "normal-timescaledb"
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
       },
       "gridPos": {
         "h": 8,
@@ -221,13 +221,14 @@
         "keepTime": false,
         "maxItems": 10,
         "query": "",
+        "showFolderNames": true,
         "showHeadings": false,
         "showRecentlyViewed": false,
         "showSearch": true,
         "showStarred": false,
         "tags": []
       },
-      "pluginVersion": "10.3.1",
+      "pluginVersion": "11.5.0",
       "title": "Dashboards",
       "type": "dashlist"
     },
@@ -271,8 +272,7 @@
                 "value": null
               }
             ]
-          },
-          "unitScale": true
+          }
         },
         "overrides": [
           {
@@ -350,7 +350,7 @@
           }
         ]
       },
-      "pluginVersion": "10.3.1",
+      "pluginVersion": "11.5.0",
       "targets": [
         {
           "datasource": {
@@ -440,8 +440,7 @@
                 "value": null
               }
             ]
-          },
-          "unitScale": true
+          }
         },
         "overrides": []
       },
@@ -468,6 +467,7 @@
         "showValue": "auto",
         "stacking": "none",
         "tooltip": {
+          "hideZeros": false,
           "mode": "single",
           "sort": "none"
         },
@@ -475,7 +475,7 @@
         "xTickLabelRotation": 0,
         "xTickLabelSpacing": 100
       },
-      "pluginVersion": "10.3.1",
+      "pluginVersion": "11.5.0",
       "targets": [
         {
           "datasource": {
@@ -485,7 +485,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT class, count(*) points FROM model_metadata\n                       WHERE class IS NOT null\n                       GROUP BY class\nORDER BY points DESC",
+          "rawSql": "SELECT\n  class,\n  count(*) points\nFROM\n  layer_model lm\n  join points p on p.id= lm.point_id\nWHERE\n  lm.class IS NOT null and lm.class <>'' and p.point_type = 'POINT'\nGROUP BY\n  lm.class \nORDER BY\n  points DESC",
           "refId": "A",
           "sql": {
             "columns": [
@@ -510,8 +510,9 @@
       "type": "barchart"
     }
   ],
+  "preload": false,
   "refresh": "",
-  "schemaVersion": 39,
+  "schemaVersion": 40,
   "tags": [],
   "templating": {
     "list": []
@@ -524,6 +525,6 @@
   "timezone": "",
   "title": "Home",
   "uid": "d719e98b-b843-4cb0-98f1-43967a0fbbea",
-  "version": 2,
+  "version": 1,
   "weekStart": ""
 }

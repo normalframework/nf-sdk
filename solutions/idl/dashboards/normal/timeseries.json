@@ -18,8 +18,8 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
+  "id": 4,
   "links": [],
-  "liveNow": false,
   "panels": [
     {
       "datasource": {
@@ -39,6 +39,7 @@
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 0,
             "gradientMode": "none",
@@ -96,10 +97,12 @@
           "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "multi",
           "sort": "none"
         }
       },
+      "pluginVersion": "11.5.0",
       "targets": [
         {
           "datasource": {
@@ -109,7 +112,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  mm.equipref,\n  m.value as \"Value\",\n  $__time(m.time)\nFROM\n  metrics m\n  JOIN model_metadata mm ON m.metric_id = mm.metric_id\n  JOIN bacnet_metadata bm ON m.metric_id = bm.metric_id\nWHERE\n  $__timeFilter(m.time)\n  AND mm.class IN($class)\nORDER BY\n  time",
+          "rawSql": "SELECT lm.\"equipRef\",\n       d.value as \"Value\",\n    $__time(d.time)\nFROM\n    data d\n    join points p on d.point_id = p.id\n    join layer_model lm on p.id = lm.point_id\nWHERE\n    $__timeFilter(d.time)\n  AND ('${class:csv}' = '''' OR lm.class IN ($class)) \nORDER BY\n    time",
           "refId": "A",
           "sql": {
             "columns": [
@@ -159,6 +162,7 @@
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 0,
             "gradientMode": "none",
@@ -216,10 +220,12 @@
           "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "multi",
           "sort": "none"
         }
       },
+      "pluginVersion": "11.5.0",
       "targets": [
         {
           "datasource": {
@@ -229,7 +235,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  pm.name,\n  m.value as \"Value\",\n  $__time(m.time)\nFROM\n  metrics m\n  JOIN model_metadata mm ON m.metric_id = mm.metric_id\n  JOIN point_metadata pm ON m.metric_id = pm.metric_id\nWHERE\n  $__timeFilter(m.time)\n  AND mm.class IN ($class)\nORDER BY\n  time",
+          "rawSql": "SELECT\n  p.name,\n   d.value as \"Value\",\n    $__time(d.time)\nFROM\n   data d\n    join points p on d.point_id = p.id\n    join layer_model lm on p.id = lm.point_id\nWHERE\n   $__timeFilter(d.time)\n  AND ('${class:csv}' = '''' OR lm.class IN ($class)) \nORDER BY\n  time",
           "refId": "A",
           "sql": {
             "columns": [
@@ -262,14 +268,15 @@
       "type": "timeseries"
     }
   ],
+  "preload": false,
   "refresh": "",
-  "schemaVersion": 39,
+  "schemaVersion": 40,
   "tags": [],
   "templating": {
     "list": [
       {
+        "allValue": "''",
         "current": {
-          "selected": true,
           "text": [
             "discharge-air-flow-sensor"
           ],
@@ -281,18 +288,15 @@
           "type": "grafana-postgresql-datasource",
           "uid": "normal-timescaledb"
         },
-        "definition": "SELECT DISTINCT class FROM model_metadata WHERE class IS NOT null",
-        "hide": 0,
-        "includeAll": false,
+        "definition": "SELECT DISTINCT class\nFROM layer_model lm\n         join points p on lm.point_id = p.id\nWHERE p.point_type = 'POINT' and class IS NOT null and class <> ''",
+        "includeAll": true,
         "label": "Class",
         "multi": true,
         "name": "class",
         "options": [],
-        "query": "SELECT DISTINCT class FROM model_metadata WHERE class IS NOT null",
+        "query": "SELECT DISTINCT class\nFROM layer_model lm\n         join points p on lm.point_id = p.id\nWHERE p.point_type = 'POINT' and class IS NOT null and class <> ''",
         "refresh": 1,
         "regex": "",
-        "skipUrlSync": false,
-        "sort": 0,
         "type": "query"
       }
     ]
