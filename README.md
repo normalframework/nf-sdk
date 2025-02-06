@@ -16,7 +16,7 @@ log into the Azure ACR repository using the credentials you obtained from Normal
 
 ```
 $ sudo apt install docker docker-compose git
-$ sudo docker login -u <username> -p <key> normalframework.azurecr.io
+$ sudo docker login -u <username> -p <key> normal.azurecr.io
 ```
 
 After that, clone this repository:
@@ -51,3 +51,10 @@ Normal offers several pre-built integrations with other systems under permissive
 | [ALC](https://github.com/normalframework/alc-plugin) | Import data from WebCTRL | | | ✔️ | |
 | [OPC](https://github.com/normalframework/opc-integration) | Connect to UPC-UA Servers | ✔️ | | | | 
 
+Release Types
+=============
+
+As of version 3.8, two release types are available:
+
+  * GA (general availability) releases are hosted in the `normal.azurecr.io` registry.  These releases are "locked" and require a valid license to be entered before they can be used.
+  * Enterprise releases are hosted in the previous `normalframework.azurecr.io`. In order to access these, you must have an master service agreement.  These releases do not require activation to be used.
