@@ -6,7 +6,7 @@ services:
   # and management console.
   nf: 
 #    image: normal.azurecr.io/normalframework/nf-full:3.4
-    image: normalframework.azurecr.io/normalframework/nf-full:develop
+    image: normal.azurecr.io/normalframework/nf-full:3.8
     network_mode: host
     depends_on:
       - redis
@@ -35,7 +35,7 @@ services:
   redis:
     ports:
       - "6379:6379"
-    image: normalframework.azurecr.io/normalframework/redis:develop
+    image: normal.azurecr.io/normalframework/redis:3.8
 #    image: normal.azurecr.io/normalframework/redis:3.4
 #    volumes:
 #      - /tmp/nf-redis:/data
