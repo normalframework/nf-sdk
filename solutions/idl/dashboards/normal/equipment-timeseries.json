@@ -18,6 +18,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
+  "id": 3,
   "links": [],
   "panels": [
     {
@@ -37,6 +38,7 @@
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 0,
             "gradientMode": "none",
@@ -90,10 +92,12 @@
           "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "single",
           "sort": "none"
         }
       },
+      "pluginVersion": "11.5.1",
       "targets": [
         {
           "datasource": {
@@ -103,7 +107,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  mm.equipref || ' - ' || $label as \"Label\",\n  m.value as \"Value\",\n  $__time(m.time)\nFROM\n  metrics m\n  JOIN model_metadata mm ON m.metric_id = mm.metric_id\n  JOIN point_metadata pm ON m.metric_id = pm.metric_id\n  JOIN equipment_types et ON mm.equip_type = et.id\nWHERE\n  $__timeFilter(m.time)\n  and ( mm.equipref IN ($equip) or '${equip:csv}' = '''')\n  and (et.name = '$equipType' or '$equipType' = '')\n  and mm.class is not null\n  and (mm.class IN ($class) or  '${class:csv}' = '''')\n  and (pm.name IN ($objectName) or  '${objectName:csv}' = '''')\norder by\n  time",
+          "rawSql": "SELECT\n  lm.\"equipRef\" || ' - ' || p.name,\n  d.value as \"Value\",\n  $__time(d.time)\nFROM\n  \"data\" d\n  JOIN points p ON d.point_id = p.id\n  join layer_model lm on p.id = lm.point_id\n  JOIN equipment_type et ON lm.\"equipTypeId\" = et.id\nWHERE\n  $__timeFilter(d.time)\n  and (\n    lm.\"equipRef\" IN ($equip)\n    or '${equip:csv}' = ''''\n  )\n  and (\n    et.name = '$equipType'\n    or '$equipType' = ''\n  )\n  and lm.class is null\n  and (\n    p.name IN ($objectName)\n    or '${objectName:csv}' = ''''\n  )\norder by\n  time",
           "refId": "A",
           "sql": {
             "columns": [
@@ -152,6 +156,7 @@
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
+            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 0,
             "gradientMode": "none",
@@ -205,10 +210,12 @@
           "showLegend": true
         },
         "tooltip": {
+          "hideZeros": false,
           "mode": "single",
           "sort": "none"
         }
       },
+      "pluginVersion": "11.5.1",
       "targets": [
         {
           "datasource": {
@@ -218,7 +225,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  mm.equipref || ' - ' || pm.name,\n  m.value as \"Value\",\n  $__time(m.time)\nFROM\n  metrics m\n  JOIN model_metadata mm ON m.metric_id = mm.metric_id\n  JOIN point_metadata pm ON m.metric_id = pm.metric_id\n  JOIN equipment_types et ON mm.equip_type = et.id\nWHERE\n   $__timeFilter(m.time)\n  and ( mm.equipref IN ($equip) or '${equip:csv}' = '''')\n  and (et.name = '$equipType' or '$equipType' = '')\n  and mm.class is null\n  and (pm.name IN ($objectName) or  '${objectName:csv}' = '''')\norder by\n  time",
+          "rawSql": "SELECT\n  lm.\"equipRef\" || ' - ' || p.name,\n    d.value as \"Value\",\n  $__time(d.time)\nFROM\n    \"data\" d\n    JOIN points p ON d.point_id = p.id\n    join layer_model lm on p.id = lm.point_id\n    JOIN equipment_type et ON lm.\"equipTypeId\" = et.id\nWHERE\n   $__timeFilter(d.time)\n  and (lm.\"equipRef\" IN ($equip) or '${equip:csv}' = '''')\n  and (et.name = '$equipType' or '$equipType' = '')\n  and lm.class is null\n  and (p.name IN ($objectName) or '${objectName:csv}' = '''')\norder by\n  time",
           "refId": "A",
           "sql": {
             "columns": [
@@ -251,36 +258,31 @@
       "type": "timeseries"
     }
   ],
-  "schemaVersion": 39,
+  "preload": false,
+  "schemaVersion": 40,
   "tags": [],
   "templating": {
     "list": [
       {
-        "current": {
-          "selected": false
-        },
+        "current": {},
         "datasource": {
           "type": "grafana-postgresql-datasource",
           "uid": "normal-timescaledb"
         },
-        "definition": "SELECT name FROM equipment_types",
-        "hide": 0,
+        "definition": "SELECT distinct \"name\" FROM equipment_type",
         "includeAll": false,
         "label": "Equip Type",
-        "multi": false,
         "name": "equipType",
         "options": [],
-        "query": "SELECT name FROM equipment_types",
+        "query": "SELECT distinct \"name\" FROM equipment_type",
         "refresh": 1,
         "regex": "",
-        "skipUrlSync": false,
         "sort": 1,
         "type": "query"
       },
       {
         "allValue": "''",
         "current": {
-          "selected": true,
           "text": [
             "All"
           ],
@@ -292,24 +294,20 @@
           "type": "grafana-postgresql-datasource",
           "uid": "normal-timescaledb"
         },
-        "definition": "SELECT distinct mm.equipref FROM model_metadata  mm\n                         join equipment_types et on mm.equip_type = et.id\n                         where et.name = '$equipType' or '$equipType' = ''",
-        "hide": 0,
+        "definition": "SELECT distinct mm.\"equipRef\" FROM layer_model  mm\n                         join equipment_type et on mm.\"equipTypeId\" = et.id\n                         where mm.\"equipRef\" <> '' and (et.name = '$equipType' or '$equipType' = '')",
         "includeAll": true,
         "label": "Equip",
         "multi": true,
         "name": "equip",
         "options": [],
-        "query": "SELECT distinct mm.equipref FROM model_metadata  mm\n                         join equipment_types et on mm.equip_type = et.id\n                         where et.name = '$equipType' or '$equipType' = ''",
+        "query": "SELECT distinct mm.\"equipRef\" FROM layer_model  mm\n                         join equipment_type et on mm.\"equipTypeId\" = et.id\n                         where mm.\"equipRef\" <> '' and (et.name = '$equipType' or '$equipType' = '')",
         "refresh": 1,
         "regex": "",
-        "skipUrlSync": false,
-        "sort": 0,
         "type": "query"
       },
       {
         "allValue": "''",
         "current": {
-          "selected": true,
           "text": [
             "All"
           ],
@@ -321,24 +319,20 @@
           "type": "grafana-postgresql-datasource",
           "uid": "normal-timescaledb"
         },
-        "definition": "SELECT distinct mm.class\nFROM model_metadata mm\n         join equipment_types et on mm.equip_type = et.id\nwhere (et.name = '$equipType' or '$equipType' = '')\n  and (mm.equipref IN ($equip) or '${equip:csv}' = '''')\n  and mm.class is not null\n",
-        "hide": 0,
+        "definition": "SELECT distinct lm.class\nFROM layer_model lm\n         join equipment_type et on lm.\"equipTypeId\" = et.id\nwhere (et.name = '$equipType' or '$equipType' = '')\n  and (lm.\"equipRef\" IN ($equip) or '${equip:csv}' = '''')\n  and lm.class is not null and lm.class <> ''",
         "includeAll": true,
         "label": "Class",
         "multi": true,
         "name": "class",
         "options": [],
-        "query": "SELECT distinct mm.class\nFROM model_metadata mm\n         join equipment_types et on mm.equip_type = et.id\nwhere (et.name = '$equipType' or '$equipType' = '')\n  and (mm.equipref IN ($equip) or '${equip:csv}' = '''')\n  and mm.class is not null\n",
+        "query": "SELECT distinct lm.class\nFROM layer_model lm\n         join equipment_type et on lm.\"equipTypeId\" = et.id\nwhere (et.name = '$equipType' or '$equipType' = '')\n  and (lm.\"equipRef\" IN ($equip) or '${equip:csv}' = '''')\n  and lm.class is not null and lm.class <> ''",
         "refresh": 1,
         "regex": "",
-        "skipUrlSync": false,
-        "sort": 0,
         "type": "query"
       },
       {
         "allValue": "''",
         "current": {
-          "selected": true,
           "text": [
             "All"
           ],
@@ -350,30 +344,24 @@
           "type": "grafana-postgresql-datasource",
           "uid": "normal-timescaledb"
         },
-        "definition": "SELECT DISTINCT pm.name\nFROM point_metadata pm\n         JOIN model_metadata mm ON pm.metric_id = mm.metric_id\n         JOIN equipment_types et ON mm.equip_type = et.id\nWHERE (mm.equipref IN ($equip) or '${equip:csv}' = '''')\n  and (et.name = '$equipType' or '$equipType' = '')",
-        "hide": 0,
+        "definition": "SELECT DISTINCT p.name\nFROM points p\n         JOIN layer_model lm ON lm.point_id = p.id \n         JOIN equipment_type et ON lm.\"equipTypeId\" = et.id\nWHERE (lm.\"equipRef\" IN ($equip) or '${equip:csv}' = '''')\n  and (et.name = '$equipType' or '$equipType' = '')",
         "includeAll": true,
         "label": "Object Name",
         "multi": true,
         "name": "objectName",
         "options": [],
-        "query": "SELECT DISTINCT pm.name\nFROM point_metadata pm\n         JOIN model_metadata mm ON pm.metric_id = mm.metric_id\n         JOIN equipment_types et ON mm.equip_type = et.id\nWHERE (mm.equipref IN ($equip) or '${equip:csv}' = '''')\n  and (et.name = '$equipType' or '$equipType' = '')",
+        "query": "SELECT DISTINCT p.name\nFROM points p\n         JOIN layer_model lm ON lm.point_id = p.id \n         JOIN equipment_type et ON lm.\"equipTypeId\" = et.id\nWHERE (lm.\"equipRef\" IN ($equip) or '${equip:csv}' = '''')\n  and (et.name = '$equipType' or '$equipType' = '')",
         "refresh": 1,
         "regex": "",
-        "skipUrlSync": false,
-        "sort": 0,
         "type": "query"
       },
       {
         "current": {
-          "selected": true,
           "text": "Class",
           "value": "mm.class"
         },
-        "hide": 0,
         "includeAll": false,
         "label": "Label",
-        "multi": false,
         "name": "label",
         "options": [
           {
@@ -387,9 +375,7 @@
             "value": "pm.name"
           }
         ],
-        "query": "Class : mm.class,Object Name : pm.name",
-        "queryValue": "",
-        "skipUrlSync": false,
+        "query": "Class : lm.class,Object Name : p.name",
         "type": "custom"
       }
     ]
@@ -402,6 +388,6 @@
   "timezone": "browser",
   "title": "Equipment TimeSeries",
   "uid": "fdu0bcp6imrr4b",
-  "version": 9,
+  "version": 1,
   "weekStart": ""
 }
