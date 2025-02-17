@@ -107,7 +107,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  lm.\"equipRef\" || ' - ' || p.name,\n  d.value as \"Value\",\n  $__time(d.time)\nFROM\n  \"data\" d\n  JOIN points p ON d.point_id = p.id\n  join layer_model lm on p.id = lm.point_id\n  JOIN equipment_type et ON lm.\"equipTypeId\" = et.id\nWHERE\n  $__timeFilter(d.time)\n  and (\n    lm.\"equipRef\" IN ($equip)\n    or '${equip:csv}' = ''''\n  )\n  and (\n    et.name = '$equipType'\n    or '$equipType' = ''\n  )\n  and lm.class is null\n  and (\n    p.name IN ($objectName)\n    or '${objectName:csv}' = ''''\n  )\norder by\n  time",
+          "rawSql": "SELECT\n  lm.\"equipRef\" || ' - ' || p.name,\n  d.value as \"Value\",\n  $__time(d.time)\nFROM\n  \"data\" d\n  JOIN points p ON d.point_id = p.id\n  join layer_model lm on p.id = lm.point_id\n  JOIN equipment_type et ON lm.\"equipTypeId\" = et.id\nWHERE\n  $__timeFilter(d.time)\n  and (\n    lm.\"equipRef\" IN ($equip)\n    or '${equip:csv}' = ''''\n  )\n  and (\n    et.name = '$equipType'\n    or '$equipType' = ''\n  )\n  and lm.class not is null\n  and (\n    p.name IN ($objectName)\n    or '${objectName:csv}' = ''''\n  )\norder by\n  time",
           "refId": "A",
           "sql": {
             "columns": [
