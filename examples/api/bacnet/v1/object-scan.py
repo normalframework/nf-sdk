@@ -13,37 +13,52 @@ from helpers import NfClient, print_response
 
 client = NfClient()
 
-device_adr = [10, 0, 1, 5, 0xba, 0xc0]
+# the bacnet "mac" of the router -- the IP address + port (6 octets)
+device_mac = [192, 168, 157, 13, 0xBA, 0xC0]
+
+# the DNET of the target device
+device_net = 713
+
+# the DADR of the target device
+device_adr = [0x1]
+
+# the Device object instance
+device_id = 71301
+
+# this is the BACnet minimum MTU
+max_apdu = 128
 
 res = client.post("/api/v1/bacnet/scan", json={
-   "parentId": 1,
-   "object": {
-    "target": {
-     "mac": base64.b64encode(bytes(device_adr)).decode("utf-8"),
-     "maxApdu": 1476,
-     "deviceId": 9001,
+    "parentId": 418,
+    "object": {
+        "target": {
+            "mac": base64.b64encode(bytes(device_mac)).decode("utf-8"),
+            "net":  device_net,
+            "adr": base64.b64encode(bytes(device_adr)).decode("utf-8"),
+            "maxApdu": max_apdu,
+            "deviceId": device_id,
+        },
+        "properties": [],
+        "objectTypes": [
+            "OBJECT_ANALOG_INPUT",
+            "OBJECT_ANALOG_OUTPUT",
+            "OBJECT_ANALOG_VALUE",
+            "OBJECT_BINARY_INPUT",
+            "OBJECT_BINARY_OUTPUT",
+            "OBJECT_BINARY_VALUE",
+            "OBJECT_DEVICE",
+            "OBJECT_MULTI_STATE_INPUT",
+            "OBJECT_MULTI_STATE_OUTPUT",
+            "OBJECT_MULTI_STATE_VALUE",
+            "OBJECT_SCHEDULE",
+            "OBJECT_CALENDAR",
+            "OBJECT_NETWORK_PORT"
+        ],
+        "ifMissing": "DELETE"
     },
-    "properties": [],
-    "objectTypes": [
-     "OBJECT_ANALOG_INPUT",
-     "OBJECT_ANALOG_OUTPUT",
-     "OBJECT_ANALOG_VALUE",
-     "OBJECT_BINARY_INPUT",
-     "OBJECT_BINARY_OUTPUT",
-     "OBJECT_BINARY_VALUE",
-     "OBJECT_DEVICE",
-     "OBJECT_MULTI_STATE_INPUT",
-     "OBJECT_MULTI_STATE_OUTPUT",
-     "OBJECT_MULTI_STATE_VALUE",
-     "OBJECT_SCHEDULE",
-     "OBJECT_CALENDAR",
-     "OBJECT_NETWORK_PORT"
-    ],
-    "ifMissing": "DELETE"
-   },
-   "autoImport": True,
-  })
-              
+    "autoImport": True,
+})
+
 print_response(res)
 scan_id = res.json()["id"]
 
