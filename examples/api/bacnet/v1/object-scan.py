@@ -16,28 +16,21 @@ client = NfClient()
 device_adr = [10, 0, 1, 5, 0xba, 0xc0]
 
 res = client.post("/api/v1/bacnet/scan", json={
-   "parentId": 1,
+   "parentId": 1244,
    "object": {
     "target": {
-     "mac": base64.b64encode(bytes(device_adr)).decode("utf-8"),
-     "maxApdu": 1476,
-     "deviceId": 9001,
+     "mac": "CmUoGbrA",
+     "net": 30000,
+     "adr": "Ag==",
+     "maxApdu": 480,
+     "deviceId": 300002,
+     "bbmd": "",
+     "portId": 0
     },
-    "properties": [],
+    "properties": ["PROP_OBJECT_NAME", "PROP_UNITS"],
     "objectTypes": [
-     "OBJECT_ANALOG_INPUT",
-     "OBJECT_ANALOG_OUTPUT",
-     "OBJECT_ANALOG_VALUE",
-     "OBJECT_BINARY_INPUT",
-     "OBJECT_BINARY_OUTPUT",
      "OBJECT_BINARY_VALUE",
-     "OBJECT_DEVICE",
-     "OBJECT_MULTI_STATE_INPUT",
-     "OBJECT_MULTI_STATE_OUTPUT",
-     "OBJECT_MULTI_STATE_VALUE",
-     "OBJECT_SCHEDULE",
-     "OBJECT_CALENDAR",
-     "OBJECT_NETWORK_PORT"
+     "OBJECT_DEVICE"
     ],
     "ifMissing": "DELETE"
    },

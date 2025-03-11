@@ -655,7 +655,8 @@ class UpdateCommand(Subcommand):
                     point["attr"][attr] = line[field_indexes[i]]
             if updates > 0:
                 update.append(point)
-        
+
+        print (update)
         self.post("/api/v1/point/points", {
             "points": update })
                 
