@@ -1,0 +1,25 @@
+version: "2.1"
+
+volumes:
+  redis-db:
+  nf-var:
+
+services:
+  redis:
+    image: normalframework.azurecr.io/normalframework/redis:3.8.2-0
+    ports:
+      - "6379:6379"
+    volumes:
+      - "redis-db:/data"
+
+  nf:
+    image: normalframework.azurecr.io/normalframework/nf-full:3.8.2-0
+    network_mode: host
+    privileged: true
+    environment:
+      - PORT=80
+    depends_on:
+      - redis
+    volumes:
+      - "nf-var:/var/nf"
+
