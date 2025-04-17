@@ -33,7 +33,7 @@ services:
     image: normal.azurecr.io/normalframework/nf-full:3.8
 
     # use this if you have access to an enterprise license
-    #image: normalframework.azurecr.io/normalframework/nf-full:3.8
+    # image: normalframework.azurecr.io/normalframework/nf-full:3.8
     
     # a debug version of each release is available for enterprise
     # customers, which has additional packages for debugging installed
@@ -52,18 +52,10 @@ services:
 
     ## set a persistent volume for NF data.  required or else state will disappear after a restart
     volumes:
-      - /tmp/nf:/var
+      - /var/nf:/var/nf
 
     ## have docker always restart the container if it crashes
-    # restart: always
-
-    ## Set basic auth on the management console and enable API token generate.
-    ## change the secret before putting in production.
-    ## Otherwise access to the management console is unauthenticated
-    # environment:
-    #   - CONSOLE_USERNAME=admin
-    #   - CONSOLE_PASSWORD=pw
-    #   - TOKEN_SIGNING_SECRET=rTKSj0fF6nKSHsunIhVoKg1XTv5zRrOeFrFnGsHCU2wKFQGT
+    restart: unless-stopped
 
     ## Set memory and CPU limits so Linux kills the container instead of locking up
     # mem_limit: 1024m
@@ -104,8 +96,10 @@ services:
     # image: normalframework.azurecr.io/normalframework/redis:3.8
 
     ## set this or else the point database will not persist
-    # volumes:
-    #   - /tmp/nf-redis:/data
+    volumes:
+      - /var/nf-redis:/data
+
+    restart: unless-stopped
   
     ## Set memory and CPU limits so Linux kills the container instead of locking up
     # mem_limit: 1024m
