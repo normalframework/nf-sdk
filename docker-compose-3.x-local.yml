@@ -30,7 +30,7 @@ services:
   # the main container which runs all the NF services, load balancer,
   # and management console.
   nf:
-    image: normal.azurecr.io/normalframework/nf-full:3.8
+    image: normal.azurecr.io/normalframework/nf-full:3.9
 
     # use this if you have access to an enterprise license
     # image: normalframework.azurecr.io/normalframework/nf-full:3.8
@@ -53,7 +53,10 @@ services:
     ## set a persistent volume for NF data.  required or else state will disappear after a restart
     volumes:
       - /var/nf:/var/nf
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
 
+      
     ## have docker always restart the container if it crashes
     restart: unless-stopped
 
@@ -92,7 +95,7 @@ services:
   redis:
     ports:
       - "6379:6379"
-    image: normal.azurecr.io/normalframework/redis:3.8
+    image: normal.azurecr.io/normalframework/redis:3.9
     # image: normalframework.azurecr.io/normalframework/redis:3.8
 
     ## set this or else the point database will not persist
