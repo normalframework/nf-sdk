@@ -1,10 +1,7 @@
-"""Perform a Read Property Multiple
+"""Create A MultiState Value Object
 
-Pre 2.1, the ReadProperty-Multiple endpoint only accepted GET requests
-which means that all arguments must be sent as query params.
-
-This unfortunately means that only reading one item per request is
-possible.
+This example shows how to also create the State_Text property which
+defines the values of the enumeration.
 """
 import sys
 sys.path.append("../..")
