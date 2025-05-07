@@ -1,0 +1,72 @@
+"""Perform a Read Property Multiple
+
+Pre 2.1, the ReadProperty-Multiple endpoint only accepted GET requests
+which means that all arguments must be sent as query params.
+
+This unfortunately means that only reading one item per request is
+possible.
+"""
+import sys
+sys.path.append("../..")
+
+from helpers import NfClient, print_response
+
+client = NfClient()
+
+res = client.post("/api/v1/bacnet/local", {
+    "object_id": {
+        "object_type": "OBJECT_MULTI_STATE_VALUE",
+        "instance": 0, # create a new object
+    },
+    "props": [
+        {
+            "property": "PROP_OBJECT_NAME",
+            "value": {
+                "character_string": "Example MSV",
+            },
+        },
+        {
+            "property": "PROP_UNITS",
+            "value": {
+                "enumeration": "85", # look up enum value of your units
+            },
+        },
+        {
+            "property": "PROP_OUT_OF_SERVICE",
+            "value": {
+                "boolean": False,
+            },
+        },
+        {
+            "property": "PROP_PRESENT_VALUE",
+            "value": {
+                "enumerated": 2,
+            },
+        },
+        {
+            "property": "PROP_NUMBER_OF_STATES",
+            "value": {
+                "unsigned": 3,
+            },
+        },
+        {
+            "property": "PROP_STATE_TEXT",
+            "value": {
+                "array": [
+                    {
+                        "character_string": "State 1",
+                    },
+                    {
+                        "character_string": "State 2",
+                    },
+                    {
+                        "character_string": "State 3",
+                    },
+                ]
+            },
+        }
+    ]
+})
+print_response(res)
+        
+
