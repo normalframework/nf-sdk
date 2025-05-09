@@ -80,6 +80,9 @@ class NfClient(object):
 
     def post(self, path, json={}, *args, **kwargs):
         return requests.post(self.base + path, auth=self.auth, json=json)
+
+    def patch(self, path, json={}, *args, **kwargs):
+        return requests.patch(self.base + path, auth=self.auth, json=json)
     
 
 def print_response(res):
