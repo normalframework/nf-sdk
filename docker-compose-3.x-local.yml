@@ -72,6 +72,8 @@ services:
     #  - NET_ADMIN
     # environment:
     #  - NORMAL_FIREWALL_INTERFACE=enp1s0
+    # run the management console and API on a different port
+    #  - PORT=8080
 
     ## Enable these options to mount the container read-only.  This is
     ## probably more secure but prevents you from making changes
