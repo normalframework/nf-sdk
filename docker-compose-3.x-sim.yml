@@ -30,7 +30,7 @@ services:
   # the main container which runs all the NF services, load balancer,
   # and management console.
   nf:
-    image: normalframework.azurecr.io/normalframework/nf-full:3.8
+    image: normalframework.azurecr.io/normalframework/nf-full:3.9
     ports:
       - 8080:8080
     depends_on:
@@ -58,7 +58,7 @@ services:
   # Most persistent data is in redis.  This is essentially an
   #  unmodified upstream with RediSearch and RedisTimeseries installed.
   redis:
-    image: normalframework.azurecr.io/normalframework/redis:3.8
+    image: normalframework.azurecr.io/normalframework/redis:3.9
     volumes:
       - /tmp/nf-redis:/data
     networks:
