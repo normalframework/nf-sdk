@@ -96,3 +96,35 @@ If you need to make changes to the root filesystem, you will need to remount rea
 ```
 sudo mount -o remount,rw /
 ```
+
+Systemd Watchdog
+----------------
+If your hardware supports it, you can configure systemd to "ping" the hardware watchdog periodically.  This will cause your board to automatically reboot if the kernel panics, etc.
+
+It is also possible to have the watchdog monitor individual services, but a full guideline for this is beyond the scope of this note.
+
+```
+$ sudo systemctl edit system.conf
+
+# add or uncomment these lines:
+[Manager]
+# Time systemd gives itself to prove it's alive before HW reset
+# RuntimeWatchdogSec must be less than the hardware watchdog timeout
+RuntimeWatchdogSec=30s
+# Optional: reboot automatically if systemd fails to start services
+RebootWatchdogSec=1min
+
+# then
+$ sudo systemctl daemon-reexec
+```
+
+Network Stickiness
+------------------
+
+Generally on embedded systems, network manager or netplan should try to activiate network connections "forever," rather than giving up.  This prevents connectivity outages due to down DHCP servers.
+
+By default Ubuntu Server uses Netplan with the systemd-networkd backend.  Newer versions are already configured to "try forever", but you may want to mask the systemd unit that blocks boot until the device is online:
+
+```
+sudo systemctl mask systemd-networkd-wait-online.service
+```
