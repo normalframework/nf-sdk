@@ -1,7 +1,9 @@
-Deploying on Ubuntu
+Application Note: Deploying on Ubuntu
 ===================
 
 Ubuntu is commonly used as a host OS.  When used for embedded applications, there are a number of "gotchas" users should be aware of in order to harden the environment to make it as reliable as possible.
+
+**Word of warning**: the industry standard Over the Air update methodology for embedded systems requires full atomicity of system updates; for instance, using an A/B partition scheme.  Although possible with Ubuntu, setting it up is beyond the scope of this application note.  We recommend using a system like [Balena](https://www.balena.io), [Mender](https://mender.io), or other robust and tested firmware platform.  These instructions are intended to a provide a guide to the "next best" option when deploying on a server OS like Ubuntu is unavoidable.
 
 Resource Limits
 ---------------
@@ -37,7 +39,7 @@ These services should be configured to run at boot, to continue retrying even wh
 
 Filesystem Checks
 -----------------
-By default, Ubuntu may periodically initiate filesystem checks at boot (`fsck`).  Unfortunatyl this may block boot on console input ("do you want to check your system?").  This should be disabled for embedded applications.
+By default, Ubuntu may periodically initiate filesystem checks at boot (`fsck`).  Unfortunately this may block boot on console input ("do you want to check your system?").  This should be disabled for embedded applications.
 
 
 1. Disable time-based checks for each `ext4` filesystem:
@@ -54,3 +56,43 @@ sudo update-grub
 ```
 
 3. Update /etc/fstab: set option `fsck.repair=yes` for each persistent filesystem.
+
+Filesystem Partitioning
+-----------------------
+
+Full filesystems are a common source of outages.  We recommend setting up the system with a few different partitions.  You should ensure that the out-of-band access method is hosted on the root filesystem and will start even if the filesystems are full.  This partioning scheme allows you to create an immutable OS base without requiring too much tooling or operational pain.
+
+
+| Mount Point       | Type  | FS / Backend | Size (Typical)          | Options / Notes                                                          |
+| ----------------- | ----- | ------------ | ----------------------- | ------------------------------------------------------------------------ |
+| `/boot`           | Disk  | ext2/4       | 256–512 MB              | Mounted `ro`. Holds kernel/initramfs. Keep small and simple.             |
+| `/` (rootfs)      | Disk  | ext4         | 4–8 GB                  | Mounted `ro` with **overlayroot**. Immutable OS base.                    |
+| `/var`            | Disk  | ext4         | 2–4 GB (or bigger)      | Persistent. Stores system state, package DB, configs, some service data. |
+| `/var/lib/docker` | Disk  | ext4 or xfs  | 4–16 GB+                | Persistent. Dedicated to Docker images/containers. Use `noatime`.        |
+| `/data` *(opt)*   | Disk  | ext4         | As needed               | For app data/configs outside of Docker.                                  |
+| `/tmp`            | tmpfs | RAM          | \~256–512 MB            | Ephemeral runtime scratch space.                                         |
+| `/var/log`        | tmpfs | RAM          | \~128–512 MB            | Ephemeral logs. Use log forwarding if you need persistence.              |
+| `/var/tmp`        | tmpfs | RAM          | \~128–512 MB            | Ephemeral temp files.                                                    |
+| `/run`            | tmpfs | RAM          | Auto-managed by systemd | Holds runtime state (sockets, PID files).                                |
+
+
+
+Configure Overlayfs:
+
+```
+$ sudo apt-get update
+$ sudo apt-get install overlayroot
+
+# in /etc/overlayroot.conf:
+overlayroot="tmpfs"
+
+# regenerate initramfs
+$ sudo update-initramfs -u
+
+```
+
+
+If you need to make changes to the root filesystem, you will need to remount read-write: 
+```
+sudo mount -o remount,rw /
+```
