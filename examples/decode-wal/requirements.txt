@@ -1,0 +1,6 @@
+cramjam==2.11.0
+normalframework-nf-protocolbuffers-pyi==32.1.0.1.20250821142520+6633e02e14f2
+normalframework-nf-protocolbuffers-python==32.1.0.1.20250821142520+6633e02e14f2
+protobuf==6.32.1
+python-snappy==0.7.3
+types-protobuf==6.32.1.20250918
