@@ -14,13 +14,8 @@ res = client.post("/api/v1/point/query", json={
         "field": {
             # property is the attribute name.
             "property": "device_id",
-            # use a numeric query.  For a numeric query to work, the
-            # field has to be indexed as NUMERIC in the layer
-            # definition.
-            "numeric": {
-                "min_value": 260001,
-                "max_value": 260001
-            },
+            # device id is actually indexed as a tag field
+            "text": "260001",
         }
     }
 })
