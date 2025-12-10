@@ -11,9 +11,10 @@ from helpers import NfClient, print_response
 client = NfClient()
 
 res = client.post("/api/v1/bacnet/local", {
+    "uuid": "8735d5ca-d076-11f0-8dbc-1e262a866288",
     "object_id": {
         "object_type": "OBJECT_MULTI_STATE_VALUE",
-        "instance": 0, # create a new object
+        "instance":0, # create a new object
     },
     "props": [
         {
