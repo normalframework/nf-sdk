@@ -85,7 +85,7 @@ class Subcommand(object):
     
     def get(self, api, **params):
         if params.get("qs", None):
-            qs = params.get("sq")
+            qs = params.get("qs")
         else:
             qs = urllib.parse.urlencode(params, doseq=True)
         req = urllib.request.Request(self.base + api + "?" + qs)
@@ -218,7 +218,7 @@ class BackupCommand(Subcommand):
 
  * The Points database
  * BACnet settings
- * Templates
+ * Extraction workflows
 
 Backups are only guaranteed to work with the same minor version.  To
 restore an older backup, you must reinstall the matching version,
@@ -256,10 +256,10 @@ restore, and then upgrade again.
             # save the bacnet settings
             self.save_endpoint("/api/v1/bacnet/configuration", "bacnet.jsonl", archive)
             log.info("archived BACnet datalink configuration")
-            # save the templates
-            templates = self.save_endpoint("/api/v1/templates", "templates.jsonl",
-                               archive, content=True)
-            log.info("archived up %d templates", len(templates['templates']))
+            # save the extraction workflows
+            workflows = self.save_endpoint("/api/v1/equipment/extraction/workflow",
+                               "workflows.jsonl", archive, content=True)
+            log.info("archived %d extraction workflows", len(workflows.get('workflows', [])))
 
             config = self.save_endpoint("/api/v1/point/configkeys", "configkeys.jsonl", archive)
             log.info("archived %d configuration keys", len(config["values"]))
@@ -267,11 +267,20 @@ restore, and then upgrade again.
             objects = self.save_endpoint("/api/v1/bacnet/local/", "bacnet-objects.jsonl", archive)
             log.info("archived %d local bacnet objects", len(objects.get("objects", [])))
 
+            ports = self.save_endpoint("/api/v1/bacnet/ports", "bacnet-ports.jsonl", archive)
+            log.info("archived %d BACnet network ports", len(ports.get("ports", [])))
+
             profiles = self.save_endpoint("/api/v1/modbus/profiles", "modbus-profiles.jsonl", archive, content=1)
             log.info("archived %d modbus profiles", len(profiles.get("profiles", [])))
 
             connections = self.save_endpoint("/api/v1/modbus/connections", "modbus-connections.jsonl", archive)
             log.info("archived %d modbus connections", len(connections.get("connections", [])))
+
+            fox = self.save_endpoint("/api/v1/fox/connections", "fox-connections.jsonl", archive)
+            log.info("archived %d fox connections", len(fox.get("connections", [])))
+
+            equip_types = self.save_endpoint("/api/v1/equipment/types", "equipment-types.jsonl", archive)
+            log.info("archived %d equipment types", len(equip_types.get("equipmentTypes", [])))
 
             settings = self.save_endpoint("/api/v1/platform/env", "environment.jsonl", archive)
             log.info("archived %d configuration variables", len(settings.get("variables", [])))
@@ -317,8 +326,8 @@ class RestoreCommand(Subcommand):
         parser.add_argument("--force", "-f", action="store_true", default=False,
                             help="override version check"
                             )
-        parser.add_argument("--no-templates", action="store_true", default=False,
-                            help="don't restore saved templates")
+        parser.add_argument("--no-workflows", action="store_true", default=False,
+                            help="don't restore saved extraction workflows")
         parser.add_argument("--no-points", action="store_true", default=False,
                             help="don't restore saved point database")
         parser.add_argument("--no-bacnet-settings", action="store_true", default=False,
@@ -327,6 +336,8 @@ class RestoreCommand(Subcommand):
                             help="don't restore UI configuration")
         parser.add_argument("--no-modbus", action="store_true", default=False,
                             help="don't restore modbus settings")
+        parser.add_argument("--no-fox", action="store_true", default=False,
+                            help="don't restore fox connections")
         parser.add_argument("--no-variables", action="store_true", default=False,
                             help="don't restore configuration variables")
 
@@ -343,7 +354,10 @@ class RestoreCommand(Subcommand):
         with archive.open("bacnet-objects.jsonl", "r") as fp:
             objects = json.load(fp)
         for obj in objects.get("objects", []):
-            self.post("/api/v1/bacnet/local", obj)
+            result = self.post("/api/v1/bacnet/local", obj)
+            if result is None:
+                # POST failed (object may already exist), try PATCH to update
+                self.post("/api/v1/bacnet/local", obj, method="PATCH")
 
     def restore_config(self, archive):
         with archive.open("configkeys.jsonl", "r") as fp:
@@ -357,33 +371,25 @@ class RestoreCommand(Subcommand):
                 "key": k,
                 "value": v })
 
-    def restore_templates(self, archive):
-        """Restore all of the templates, and reenable any that were running
-        """
-
-        enable_count, count = 0, 0
-        with archive.open("templates.jsonl", "r") as fp:
-            templates = json.load(fp)
-
-            for t in templates["templates"]:
-                del t["path"]
+    def restore_workflows(self, archive):
+        """Restore extraction workflows"""
+        count = 0
+        with archive.open("workflows.jsonl", "r") as fp:
+            data = json.load(fp)
+            for w in data.get("workflows", []):
                 count += 1
-                self.post("/api/v1/templates", {"template": t})
-                try:
-                    enabled = t["status"]["enabled"]
-                except KeyError:
-                    enabled = False
-                if enabled:
-                    enable_count += 1
-                    # enable any previously enabled templates
-                    log.info("enabling template %s", t["name"])
-                    self.post("/api/v1/templates/" + t["name"], {
-                        "name": t["name"],
-                        "enable": True,
-                        "inputLayer": t["status"]["inputLayer"],
-                        "outputLayer": t["status"]["outputLayer"],
-                        })
-        log.info("restored %d templates (%d enabled)", count, enable_count)
+                self.post("/api/v1/equipment/extraction/workflow", {"workflow": w})
+        log.info("restored %d extraction workflows", count)
+
+    def restore_equipment_types(self, archive):
+        """Restore equipment types"""
+        count = 0
+        with archive.open("equipment-types.jsonl", "r") as fp:
+            data = json.load(fp)
+            for t in data.get("equipmentTypes", []):
+                count += 1
+                self.post("/api/v1/equipment/types", t)
+        log.info("restored %d equipment types", count)
 
     def restore_points(self, archive):
         """Restore the object database"""
@@ -400,31 +406,48 @@ class RestoreCommand(Subcommand):
             self.post("/api/v1/point/points", points)
         log.info("restored %d points", count)
 
+    def restore_bacnet_ports(self, archive):
+        """Restore BACnet network ports"""
+        log.info("restoring BACnet network ports")
+        with archive.open("bacnet-ports.jsonl", "r") as fp:
+            data = json.load(fp)
+        for port in data.get("ports", []):
+            result = self.post("/api/v1/bacnet/ports", port)
+            if result is None:
+                # port may already exist, try PATCH to update
+                port_id = port.get("portId", "")
+                self.post("/api/v1/bacnet/ports/{}".format(port_id), port, method="PATCH")
+
+    def restore_fox_connections(self, archive):
+        """Restore Fox/Niagara connections"""
+        log.info("restoring Fox connections")
+        with archive.open("fox-connections.jsonl", "r") as fp:
+            data = json.load(fp)
+        for conn in data.get("connections", []):
+            self.post("/api/v1/fox/connections", conn)
+
     def restore_modbus_profiles(self, archive):
         with archive.open("modbus-profiles.jsonl", "r") as fp:
-            for l in fp.readlines():
-                profiles = json.loads(l)
-                for p in profiles.get("profiles", []):
-                    self.post("/api/v1/modbus/profiles", {"profile": p})
+            profiles = json.load(fp)
+            for p in profiles.get("profiles", []):
+                self.post("/api/v1/modbus/profiles", {"profile": p})
 
     def restore_modbus_connections(self, archive):
         with archive.open("modbus-connections.jsonl", "r") as fp:
-            for l in fp.readlines():
-                profiles = json.loads(l)
-                for c in profiles.get("connections", []):
-                    self.post("/api/v1/modbus/connections", {"connection": c})
+            connections = json.load(fp)
+            for c in connections.get("connections", []):
+                self.post("/api/v1/modbus/connections", {"connection": c})
 
     def restore_variables(self, archive):
         restored, default = 0, 0
         with archive.open("environment.jsonl", "r") as fp:
-            for l in fp.readlines():
-                variables = json.loads(l)
-                for v in variables["variables"]:
-                    if v["isDefault"]:
-                        default += 1
-                        continue
-                    self.post("/api/v1/platform/env", {"variables": [v]})
-                    restored += 1
+            variables = json.load(fp)
+            for v in variables.get("variables", []):
+                if v.get("isDefault"):
+                    default += 1
+                    continue
+                self.post("/api/v1/platform/env", {"variables": [v]})
+                restored += 1
         log.info("restored %d configuration variables (skipped %d default values)", restored, default)
 
     def run(self, args):
@@ -436,7 +459,8 @@ class RestoreCommand(Subcommand):
                 log.warning("site is running a different version from the backup (site=%s, backup=%s)",
                          site_version.get("version", None), version)
                 if not args.force:
-                    return
+                    log.error("aborting restore due to version mismatch (use --force to override)")
+                    sys.exit(1)
             
             log.info("restoring site \"%s\" at \"%s\"", info.get("siteName", ""), self.base)
 
@@ -446,8 +470,16 @@ class RestoreCommand(Subcommand):
                     self.restore_bacnet_objects(archive)
                 except Exception as e:
                     log.warning("error restoring BACnet local objects: " + str(e))
-            if not args.no_templates:
-                self.restore_templates(archive)
+                try:
+                    self.restore_bacnet_ports(archive)
+                except Exception as e:
+                    log.warning("error restoring BACnet network ports: " + str(e))
+            if not args.no_workflows:
+                self.restore_workflows(archive)
+                try:
+                    self.restore_equipment_types(archive)
+                except Exception as e:
+                    log.warning("error restoring equipment types: " + str(e))
             if not args.no_config:
                 self.restore_config(archive)
             if not args.no_points:
@@ -455,6 +487,11 @@ class RestoreCommand(Subcommand):
             if not args.no_modbus:
                 self.restore_modbus_profiles(archive)
                 self.restore_modbus_connections(archive)
+            if not args.no_fox:
+                try:
+                    self.restore_fox_connections(archive)
+                except Exception as e:
+                    log.warning("error restoring Fox connections: " + str(e))
             if not args.no_variables:
                 self.restore_variables(archive)
 
