@@ -18,11 +18,15 @@ services:
     privileged: true
     environment:
       - PORT=80
-      - DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host/run/dbus/system_bus_socket
+    #   uncomment these to enable support for the bluetooth configuration app
+    #   - NWCONFIG_ENABLED=true
+    #   this variable sets how long after device boot the BLE configuration service is available.  For security, it's best not to leave it active forever.
+    #   - NWCONFIG_BLE_TIMEOUT=900s
+    #   - DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host/run/dbus/system_bus_socket
+    # labels:
+    #   io.balena.features.dbus: '1'
     depends_on:
       - redis
     volumes:
       - "nf-var:/var/nf"
-    labels:
-      io.balena.features.dbus: '1'
 
