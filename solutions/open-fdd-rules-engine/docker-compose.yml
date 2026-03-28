@@ -1,0 +1,21 @@
+# Open-FDD rules sidecar: reads NF HPL timeseries, runs YAML rules from ./rules.
+#
+# Prereqs: NF running (e.g. nf-sdk docker-compose on the host), OAuth or basic auth env vars.
+# Copy mapping.example.yaml to mapping.yaml and set real point UUIDs.
+#
+# docker compose up --build
+
+services:
+  open-fdd-rules:
+    build: .
+    environment:
+      NFURL: http://host.docker.internal:8080
+      NF_CLIENT_ID: ${NF_CLIENT_ID:-}
+      NF_CLIENT_SECRET: ${NF_CLIENT_SECRET:-}
+      NF_BASIC_USER: ${NF_BASIC_USER:-}
+      OPENFDD_MAPPING: /app/mapping.yaml
+    volumes:
+      - ./mapping.yaml:/app/mapping.yaml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
