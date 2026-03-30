@@ -4,6 +4,7 @@
 # Copy mapping.example.yaml to mapping.yaml and set real point UUIDs.
 #
 # docker compose up --build
+# docker compose up --build open-fdd-rules-api   # FastAPI: POST /run, GET /rules (AFDD-style trigger)
 
 services:
   open-fdd-rules:
@@ -16,6 +17,28 @@ services:
       OPENFDD_MAPPING: /app/mapping.yaml
     volumes:
       - ./mapping.yaml:/app/mapping.yaml:ro
+      - ./rules:/app/rules:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
+
+  open-fdd-rules-api:
+    build: .
+    command: ["uvicorn", "openfdd_nf.api_app:app", "--host", "0.0.0.0", "--port", "8090"]
+    ports:
+      - "8090:8090"
+    environment:
+      NFURL: http://host.docker.internal:8080
+      NF_CLIENT_ID: ${NF_CLIENT_ID:-}
+      NF_CLIENT_SECRET: ${NF_CLIENT_SECRET:-}
+      NF_BASIC_USER: ${NF_BASIC_USER:-}
+      OPENFDD_MAPPING: /app/mapping.yaml
+      # Optional: OPENFDD_API_KEY=...  → require Authorization: Bearer for /rules and /run
+    volumes:
+      - ./mapping.yaml:/app/mapping.yaml:ro
+      - ./rules:/app/rules:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    profiles:
+      - api

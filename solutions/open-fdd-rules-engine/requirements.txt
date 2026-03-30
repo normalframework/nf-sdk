@@ -1,5 +1,7 @@
-# PyPI engine only (pin minimum; bump as you release)
+# PyPI (pin minimum; bump as you release). Prefer openfdd-engine when published for slimmer deps.
 open-fdd>=2.0.11
 pandas>=2.0
 pyyaml>=6.0
 requests>=2.28
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0

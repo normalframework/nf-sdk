@@ -19,7 +19,44 @@ For NF platform context, see the [Normal Framework documentation](https://docs.n
 | Data access | Normal APIs from `sdk` in the hook | `GET /api/v1/point/data` (+ auth like `examples/api/`) |
 | Ops | Install/update via NF app flow | `docker compose`, CI, or k8s next to NF |
 
-So the contribution is **complementary**: operators who want the **stock Open-FDD rule engine** on PyPI can run it beside NF without rewriting rules in JavaScript. A future step could be a **thin NF app** (hook on a schedule) that shells out or HTTP-calls this service—out of scope for the minimal sidecar.
+So the contribution is **complementary**: operators who want the **stock Open-FDD rule engine** on PyPI can run it beside NF without rewriting rules in JavaScript. A natural next step is a **managed NF Application** whose hooks run on a [schedule](https://docs.normal.dev/applications/overview/) and **HTTP-call** this sidecar’s API (`POST /run`) or parse its logs—hooks stay in the **JavaScript sandbox** with token scopes; the **Python + YAML + RuleRunner** stack stays in your container (same split as today, but wired for automation).
+
+### Applications SDK (read this)
+
+The [Applications SDK overview](https://docs.normal.dev/applications/overview/) describes **hooks**: managed **Node.js** functions, **schedules**, point queries, **NPM** deps, and **sandboxing** (chroot, API-only access to Normal, optional **token scopes**). That is Normal’s first-class extensibility model.
+
+**This sidecar is not a replacement for hooks.** It is for teams that want **Open-FDD’s YAML rules and `RuleRunner`** without porting them to JavaScript. Integration patterns:
+
+| Pattern | When |
+| --- | --- |
+| **A. Loop / stdout** (default `python -m openfdd_nf`) | Cron-friendly JSON to logs |
+| **B. FastAPI** (`openfdd_nf.api_app`) | Same engine; **GET /rules**, **POST /run**; optional `OPENFDD_API_KEY` (Bearer), **YAML hot reload every run** (fresh `RuleRunner` per request—like Open-FDD AFDD loop reloading rules) |
+| **C. NF hook → HTTP** | Schedule in NF calls `POST /run` on the sidecar; hook writes summaries back via Normal APIs you already use (see *Persistence* below) |
+| **D. NF hook → subprocess** | Less ideal in sandbox; prefer HTTP to the sidecar |
+
+### Upgrading from logs-only to an API
+
+There were **no separate design notes** in-repo before; behavior was **print JSON to stdout** only. The optional **FastAPI** app adds:
+
+- **`GET /health`** — liveness
+- **`GET /rules`** — YAML filenames under `rules_dir` (inventory; edit files on disk / volume mount to change behavior)
+- **`POST /run`** — pull NF timeseries, run rules, return the **same summary dict** as stdout mode
+
+Run API locally: `uvicorn openfdd_nf.api_app:app --host 0.0.0.0 --port 8090` (after `pip install -r requirements.txt`). Docker: `docker compose --profile api up --build open-fdd-rules-api` (port **8090**). Open **`/docs`** for Swagger.
+
+### Parity with Open-FDD AFDD stack (and what is intentionally different)
+
+**Same:** YAML rules on disk, `open_fdd.engine.RuleRunner`, fault `*_flag` columns, `skip_missing_columns`, Brick column names (via `mapping.yaml`). **Hot reload:** each **`POST /run`** reloads all `*.yaml` from `rules_dir` (no stale in-memory rule cache for that request).
+
+**Different / NF-specific:** **Ingress** is NF **HPL** (`/api/v1/point/data`), not Open-FDD’s Timescale `timeseries_readings`. **Persistence** is not copied automatically: Open-FDD AFDD writes **`fault_results`** / **`fault_state`** in Postgres; this sidecar does **not** assume your NF host exposes the same schema.
+
+**Persistence options (choose what fits Normal ops):**
+
+1. **NF-native** — Use a **hook** (scheduled) to call `POST /run`, then push summaries into whatever Normal supports for your deployment (derived points, external store, logging pipeline). Aligns with the SDK security model ([token scopes](https://docs.normal.dev/applications/overview/) for read vs write).
+2. **Sidecar database** — Add a small store next to this container (SQLite/Postgres) mirroring Open-FDD’s `fault_results` shape if you want Grafana-style history **without** teaching NF new tables.
+3. **Open-FDD platform** — Dual-write or forward only if you also run full Open-FDD (usually not the goal for “NF only”).
+
+We can extend the API later (`GET /run/status`, job ids, webhook) without changing the rule engine.
 
 **Security and tokens.** [Applications docs](https://docs.normal.dev/applications/overview/) note API token scopes when tokens are enabled. This sidecar uses the same **client credentials / basic** style as the SDK examples; ensure the NF client you create has permission to **read** the points you map. Credentials are supplied via environment variables (see `docker-compose.yml`); treat the container like any other service account.
 
@@ -46,6 +83,8 @@ docker compose up --build
 
 Mount your own rules by extending the image or bind-mounting over `/app/rules`. By default the image ships two example rules under `rules/` (sensor bounds + flatline for OAT and SAT).
 
+**API mode (same image):** `docker compose --profile api up --build open-fdd-rules-api` then open `http://localhost:8090/docs`. Trigger a run with `POST /run`.
+
 ## Local run (no Docker)
 
 ```bash
@@ -60,6 +99,8 @@ python -m openfdd_nf
 ```
 
 Set `run.once: true` in the mapping file for a single pass (e.g. cron).
+
+**API (local):** `uvicorn openfdd_nf.api_app:app --reload --port 8090` — then `POST http://127.0.0.1:8090/run`.
 
 ## Mapping NF points to Open-FDD
 
