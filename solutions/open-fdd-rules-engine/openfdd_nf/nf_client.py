@@ -61,3 +61,11 @@ class NFClient:
             self.auth.token = None
             res = requests.get(url, auth=self.auth, timeout=120, **kwargs)
         return res
+
+    def post(self, path: str, **kwargs: Any) -> requests.Response:
+        url = self.base + path if path.startswith("/") else f"{self.base}/{path}"
+        res = requests.post(url, auth=self.auth, timeout=120, **kwargs)
+        if res.status_code == 401 and self.auth.oauth is not None:
+            self.auth.token = None
+            res = requests.post(url, auth=self.auth, timeout=120, **kwargs)
+        return res

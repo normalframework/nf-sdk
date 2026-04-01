@@ -28,11 +28,21 @@ class RunConfig:
 
 
 @dataclass
+class FaultOutputTarget:
+    """Map a rule flag column to an NF point for Command write (e.g. BACnet AV)."""
+
+    uuid: str
+    layer: str
+
+
+@dataclass
 class AppConfig:
     nf: NFConfig
     fetch: FetchConfig
     run: RunConfig
     point_uuids: dict[str, str]
+    # flag column name (e.g. sensor_bounds_flag) -> NF point + layer
+    fault_outputs: dict[str, FaultOutputTarget]
 
 
 def load_config(path: str | Path | None = None) -> AppConfig:
@@ -62,6 +72,19 @@ def load_config(path: str | Path | None = None) -> AppConfig:
     if not isinstance(points, dict) or not points:
         raise ValueError("point_uuids must be a non-empty map of BrickClass -> UUID")
 
+    fault_raw = raw.get("fault_outputs") or {}
+    fault_outputs: dict[str, FaultOutputTarget] = {}
+    if isinstance(fault_raw, dict):
+        for flag_col, spec in fault_raw.items():
+            if not isinstance(spec, dict):
+                continue
+            uid = spec.get("uuid")
+            layer = spec.get("layer")
+            if uid and layer:
+                fault_outputs[str(flag_col)] = FaultOutputTarget(
+                    uuid=str(uid), layer=str(layer)
+                )
+
     return AppConfig(
         nf=NFConfig(base_url=base),
         fetch=FetchConfig(
@@ -77,4 +100,5 @@ def load_config(path: str | Path | None = None) -> AppConfig:
             once=bool(run_raw.get("once", False)),
         ),
         point_uuids={str(k): str(v) for k, v in points.items()},
+        fault_outputs=fault_outputs,
     )

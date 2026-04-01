@@ -34,6 +34,7 @@ services:
       NF_BASIC_USER: ${NF_BASIC_USER:-}
       OPENFDD_MAPPING: /app/mapping.yaml
       # Optional: OPENFDD_API_KEY=...  → require Authorization: Bearer for /rules and /run
+      # Optional: OPENFDD_PERSIST_DEFAULT=true → POST /run writes fault_outputs without body flag
     volumes:
       - ./mapping.yaml:/app/mapping.yaml:ro
       - ./rules:/app/rules:ro

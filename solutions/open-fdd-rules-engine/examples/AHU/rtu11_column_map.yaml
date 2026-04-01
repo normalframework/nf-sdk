@@ -1,0 +1,19 @@
+# Map RTU11.csv (open-fdd examples export) → Brick names used in Open-FDD YAML rules.
+# See: https://bbartling.github.io/open-fdd/expression_rule_cookbook.html
+#
+# After rename, `scale` multiplies the column (e.g. fan % → 0–1 for Supply_Fan_Speed_Command).
+
+timestamp_column: Timestamp
+
+rename:
+  "RTU_11_OA_T(°F)": Outside_Air_Temperature_Sensor
+  "RTU_11_DA_T(°F)": Supply_Air_Temperature_Sensor
+  "RTU_11_MA_T(°F)": Mixed_Air_Temperature_Sensor
+  "RTU_11_RA_T(°F)": Return_Air_Temperature_Sensor
+  "RTU_11_MAD_O(%)": Damper_Position_Command
+  "RTU_11_SF_O(%)": Supply_Fan_Speed_Command
+  "RTU_11_DA1_P(in/wc)": Supply_Air_Static_Pressure_Sensor
+
+# Fan command in file is 0–100 (%); cookbook / GL36-style rules expect ~0–1.
+scale:
+  Supply_Fan_Speed_Command: 0.01

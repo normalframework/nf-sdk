@@ -1,0 +1,25 @@
+# Cookbook Rule B (simplified) — needs MAT, RAT, OAT, fan from RTU11 column map.
+# https://bbartling.github.io/open-fdd/expression_rule_cookbook.html
+name: blend_temp_below_band
+description: Mixed air below expected range (OAT/RAT) when fan on (GL36-inspired)
+type: expression
+flag: blend_below_band_flag
+equipment_type: [AHU, VAV_AHU]
+
+inputs:
+  Mixed_Air_Temperature_Sensor:
+    brick: Mixed_Air_Temperature_Sensor
+  Return_Air_Temperature_Sensor:
+    brick: Return_Air_Temperature_Sensor
+  Outside_Air_Temperature_Sensor:
+    brick: Outside_Air_Temperature_Sensor
+  Supply_Fan_Speed_Command:
+    brick: Supply_Fan_Speed_Command
+
+params:
+  blend_tol: 1.15
+  rat_tol: 1.15
+  oat_tol: 1.15
+
+expression: |
+  (Mixed_Air_Temperature_Sensor - blend_tol < np.minimum(Return_Air_Temperature_Sensor - rat_tol, Outside_Air_Temperature_Sensor - oat_tol)) & (Supply_Fan_Speed_Command > 0.01)

@@ -21,3 +21,14 @@ run:
 point_uuids:
   Outside_Air_Temperature_Sensor: "00000000-0000-0000-0000-000000000001"
   Supply_Air_Temperature_Sensor: "00000000-0000-0000-0000-000000000002"
+
+# Optional: write last fault flag values (0/1) back to NF via POST /api/v2/command/write.
+# Map the rule's `flag` column name → BACnet (or other) point UUID + layer from NF Object Explorer.
+# Enable with POST /run {"persist": true} or env OPENFDD_PERSIST_DEFAULT=true
+# fault_outputs:
+#   bad_sensor_flag:
+#     uuid: "00000000-0000-0000-0000-000000000099"
+#     layer: "hpl:bacnet:1"
+#   flatline_flag:
+#     uuid: "00000000-0000-0000-0000-00000000009a"
+#     layer: "hpl:bacnet:1"

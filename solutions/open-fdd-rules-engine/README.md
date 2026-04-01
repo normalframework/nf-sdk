@@ -30,19 +30,46 @@ The [Applications SDK overview](https://docs.normal.dev/applications/overview/) 
 | Pattern | When |
 | --- | --- |
 | **A. Loop / stdout** (default `python -m openfdd_nf`) | Cron-friendly JSON to logs |
-| **B. FastAPI** (`openfdd_nf.api_app`) | Same engine; **GET /rules**, **POST /run**; optional `OPENFDD_API_KEY` (Bearer), **YAML hot reload every run** (fresh `RuleRunner` per request—like Open-FDD AFDD loop reloading rules) |
+| **B. FastAPI** (`openfdd_nf.api_app`) | Same engine; **OpenAPI `/docs`**, **GET /agent/context**, **POST /run** with JSON options; optional `OPENFDD_API_KEY` (Bearer); **YAML hot reload every run** |
 | **C. NF hook → HTTP** | Schedule in NF calls `POST /run` on the sidecar; hook writes summaries back via Normal APIs you already use (see *Persistence* below) |
 | **D. NF hook → subprocess** | Less ideal in sandbox; prefer HTTP to the sidecar |
 
-### Upgrading from logs-only to an API
+### HTTP API (operators, cron, AI agents)
 
-There were **no separate design notes** in-repo before; behavior was **print JSON to stdout** only. The optional **FastAPI** app adds:
+The **FastAPI** app is the integration surface for **humans** (Swagger UI), **cron / Kubernetes jobs** (`curl` + JSON), and **LLM agents** (structured OpenAPI + stable field names).
 
-- **`GET /health`** — liveness
-- **`GET /rules`** — YAML filenames under `rules_dir` (inventory; edit files on disk / volume mount to change behavior)
-- **`POST /run`** — pull NF timeseries, run rules, return the **same summary dict** as stdout mode
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/health` | Liveness (no auth even when `OPENFDD_API_KEY` is set) |
+| GET | `/capabilities` | Sidecar + PyPI `open-fdd` version, cookbook URL, endpoint list |
+| GET | `/agent/context` | **Agent bundle:** Brick↔UUID mapping, rule inventory, markdown **brief** aligned with the [expression rule cookbook](https://bbartling.github.io/open-fdd/expression_rule_cookbook.html) |
+| GET | `/mapping` | Same mapping as JSON (`?redact_uuids=true` for logs) |
+| GET | `/rules` | Each `*.yaml` with `name`, `type`, `flag`, `brick_inputs` |
+| GET | `/rules/{file}.yaml` | **Raw YAML** for review or prompt context |
+| POST | `/run` | Run pipeline; optional JSON body (see below) |
+| POST | `/validate/rule` | Check a YAML snippet before you write it to disk |
 
-Run API locally: `uvicorn openfdd_nf.api_app:app --host 0.0.0.0 --port 8090` (after `pip install -r requirements.txt`). Docker: `docker compose --profile api up --build open-fdd-rules-api` (port **8090**). Open **`/docs`** for Swagger.
+**`POST /run` body (all optional)** — omit `{}` for legacy behavior.
+
+- `lookback_hours` — override mapping default for this run
+- `only_rule_files` — e.g. `["sensor_bounds.yaml","sensor_flatline"]` (stems allowed)
+- `include_timeseries_stats` — per-brick non-null % on ingested data
+- `include_columns_present` — column list on the rule output frame
+- `sample_tail_rows` — last N rows (timestamp + flags + sampled Brick columns), max 200
+- `persist` — `true`/`false`/`null`; if `null`, use env `OPENFDD_PERSIST_DEFAULT`
+- `dry_run` — with `persist`, show `would_write` without calling NF
+
+**Response highlights:** `run_id`, `flags` (summary), `flags_detail` (per-flag ratios), `agent_brief` (markdown), `persistence` (NF write result or skipped).
+
+Run locally: `uvicorn openfdd_nf.api_app:app --host 0.0.0.0 --port 8090`. Docker: `docker compose --profile api up --build open-fdd-rules-api` → `http://localhost:8090/docs`.
+
+### Agentic workflow (cookbook → NF → faults)
+
+1. **Authoring** — Rules follow the [Expression rule cookbook](https://bbartling.github.io/open-fdd/expression_rule_cookbook.html): Brick class names in `inputs`, `expression` for logic, `flag` for the output column.
+2. **Bridging** — `mapping.yaml` maps each Brick class to an NF point UUID; the sidecar builds the same wide DataFrame Open-FDD expects.
+3. **Validate** — `POST /validate/rule` with draft YAML before saving to `rules/`.
+4. **Execute** — `POST /run` from an agent or scheduler; use `include_timeseries_stats` to diagnose missing data.
+5. **Persist** — Either parse JSON in an **NF hook** and write via Normal APIs, or configure **`fault_outputs`** in `mapping.yaml` so the sidecar calls **`POST /api/v2/command/write`** (same pattern as [`examples/api/command/v2/write.py`](https://github.com/normalframework/nf-sdk/blob/master/examples/api/command/v2/write.py)). You need **write**-capable credentials and Analog Values (or equivalent) for each flag.
 
 ### Parity with Open-FDD AFDD stack (and what is intentionally different)
 
@@ -52,11 +79,12 @@ Run API locally: `uvicorn openfdd_nf.api_app:app --host 0.0.0.0 --port 8090` (af
 
 **Persistence options (choose what fits Normal ops):**
 
-1. **NF-native** — Use a **hook** (scheduled) to call `POST /run`, then push summaries into whatever Normal supports for your deployment (derived points, external store, logging pipeline). Aligns with the SDK security model ([token scopes](https://docs.normal.dev/applications/overview/) for read vs write).
-2. **Sidecar database** — Add a small store next to this container (SQLite/Postgres) mirroring Open-FDD’s `fault_results` shape if you want Grafana-style history **without** teaching NF new tables.
-3. **Open-FDD platform** — Dual-write or forward only if you also run full Open-FDD (usually not the goal for “NF only”).
+1. **`fault_outputs` + Command API** — Map each `*_flag` column to `{uuid, layer}` in `mapping.yaml`; call `POST /run` with `"persist": true` (or set `OPENFDD_PERSIST_DEFAULT=true`). Last sample of each flag is written as **real** `0.0` / `1.0`.
+2. **NF hook** — Scheduled [hook](https://docs.normal.dev/applications/hooks/) calls `POST /run`, then uses `sdk.http` or command APIs to store summaries ([token scopes](https://docs.normal.dev/applications/overview/)).
+3. **Sidecar database** — Add SQLite/Postgres next to this container if you want Open-FDD–shaped history without NF writes.
+4. **Open-FDD platform** — Only if you also run full Open-FDD (usually not the “NF only” goal).
 
-We can extend the API later (`GET /run/status`, job ids, webhook) without changing the rule engine.
+Future extensions (job ids, async webhooks) can sit on top of the same `run_id` without changing the rule engine.
 
 **Security and tokens.** [Applications docs](https://docs.normal.dev/applications/overview/) note API token scopes when tokens are enabled. This sidecar uses the same **client credentials / basic** style as the SDK examples; ensure the NF client you create has permission to **read** the points you map. Credentials are supplied via environment variables (see `docker-compose.yml`); treat the container like any other service account.
 
@@ -111,6 +139,20 @@ If your DataFrame column names differ from `brick:` in the rules, Open-FDD suppo
 ## Adding rules
 
 Drop more `.yaml` files into `rules/` (or your mounted rules directory). Start from the examples here or from the upstream **[AHU rules examples](https://github.com/bbartling/open-fdd/tree/main/examples/AHU/rules)**. For patterns and snippets, use the **[Expression rule cookbook](https://bbartling.github.io/open-fdd/expression_rule_cookbook)** and the Open-FDD documentation.
+
+## Offline CSV demo (RTU11 — no NF, no Docker)
+
+Shipped under **`examples/AHU/`**: **`RTU11.csv`** (same family as upstream [open-fdd AHU examples](https://github.com/bbartling/open-fdd/tree/main/examples/AHU)), **`rtu11_column_map.yaml`** (vendor columns → Brick names), and **`rules_demo/`** (bounds, flatline, one cookbook blend expression).
+
+```bash
+cd solutions/open-fdd-rules-engine
+python tools/offline_csv_fdd.py --agent-brief --pretty
+python tools/offline_csv_fdd.py --max-rows 500 --sample-tail 3
+```
+
+**Humans** — tweak rules under `examples/AHU/rules_demo/` and re-run. **AI agents** — consume JSON + `agent_brief_markdown`; same `RuleRunner` as production, only the DataFrame source changes. **CI** — pin `--max-rows` and assert on `summary.flags`.
+
+**Hybrid ML** — see [`examples/AHU/RTU11_hybrid_rules_and_ml.ipynb`](examples/AHU/RTU11_hybrid_rules_and_ml.ipynb) (rules + residual ML, analogous to [open-fdd RTU7_machine_learning.ipynb](https://github.com/bbartling/open-fdd/blob/main/examples/AHU/RTU7_machine_learning.ipynb)); `pip install -r examples/AHU/requirements-ml.txt`.
 
 ## Tests
 

@@ -34,3 +34,29 @@ def test_load_config_minimal(tmp_path: Path):
 def test_load_config_missing_file():
     with pytest.raises(FileNotFoundError):
         load_config("/nonexistent/mapping.yaml")
+
+
+def test_load_config_fault_outputs(tmp_path: Path):
+    rules = tmp_path / "r"
+    rules.mkdir()
+    p = tmp_path / "m.yaml"
+    p.write_text(
+        textwrap.dedent(
+            """
+            run:
+              rules_dir: "{rules}"
+            point_uuids:
+              Outside_Air_Temperature_Sensor: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+            fault_outputs:
+              bad_sensor_flag:
+                uuid: "cccccccc-cccc-cccc-cccc-cccccccccccc"
+                layer: "hpl:bacnet:1"
+            """
+        )
+        .strip()
+        .format(rules=str(rules)),
+        encoding="utf-8",
+    )
+    cfg = load_config(p)
+    assert "bad_sensor_flag" in cfg.fault_outputs
+    assert cfg.fault_outputs["bad_sensor_flag"].layer == "hpl:bacnet:1"
