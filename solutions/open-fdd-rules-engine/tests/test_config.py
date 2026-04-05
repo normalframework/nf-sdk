@@ -60,3 +60,28 @@ def test_load_config_fault_outputs(tmp_path: Path):
     cfg = load_config(p)
     assert "bad_sensor_flag" in cfg.fault_outputs
     assert cfg.fault_outputs["bad_sensor_flag"].layer == "hpl:bacnet:1"
+
+
+def test_load_config_runner_column_map(tmp_path: Path):
+    rules = tmp_path / "r"
+    rules.mkdir()
+    p = tmp_path / "m.yaml"
+    p.write_text(
+        textwrap.dedent(
+            """
+            run:
+              rules_dir: "{rules}"
+            point_uuids:
+              Supply_Air_Temperature_Sensor: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+            runner_column_map:
+              discharge_air_temp_sensor: Supply_Air_Temperature_Sensor
+            """
+        )
+        .strip()
+        .format(rules=str(rules)),
+        encoding="utf-8",
+    )
+    cfg = load_config(p)
+    assert cfg.runner_column_map == {
+        "discharge_air_temp_sensor": "Supply_Air_Temperature_Sensor",
+    }

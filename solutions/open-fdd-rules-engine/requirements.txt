@@ -1,5 +1,5 @@
-# PyPI (pin minimum; bump as you release). Prefer openfdd-engine when published for slimmer deps.
-open-fdd>=2.0.11
+# PyPI — keep aligned with open-fdd engine releases (column_map workshop targets 2.0.14+).
+open-fdd>=2.0.14
 pandas>=2.0
 pyyaml>=6.0
 requests>=2.28

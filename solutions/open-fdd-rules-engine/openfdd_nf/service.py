@@ -174,11 +174,13 @@ def run_fault_pipeline(
             "detail": "no rows from /api/v1/point/data",
         }
 
-    result = runner.run(
-        df,
-        timestamp_col="timestamp",
-        skip_missing_columns=True,
-    )
+    run_kw: dict[str, Any] = {
+        "timestamp_col": "timestamp",
+        "skip_missing_columns": True,
+    }
+    if cfg.runner_column_map:
+        run_kw["column_map"] = cfg.runner_column_map
+    result = runner.run(df, **run_kw)
     summary = summarize_faults(result)
     if "timestamp" in result.columns and len(result):
         summary["timestamp_min"] = str(result["timestamp"].min())

@@ -134,15 +134,28 @@ Set `run.once: true` in the mapping file for a single pass (e.g. cron).
 
 NF exposes opaque point UUIDs. Open-FDD rules refer to **Brick** class names (e.g. `Outside_Air_Temperature_Sensor`). You bridge them in `point_uuids` exactly as you would wire columns in an exploratory notebook: discover UUIDs via the NF UI or `POST /api/v1/point/query`, then list them next to the Brick tag your YAML rules use.
 
-If your DataFrame column names differ from `brick:` in the rules, Open-FDD supports a `column_map` in the engine API; this sidecar keeps columns equal to Brick names so the default rules work without extra mapping.
+If your rule YAML uses **logical names** that differ from the **DataFrame columns** (still usually **Brick** names from `point_uuids`), set optional **`runner_column_map`** in `mapping.yaml` — same semantics as **[open-fdd column maps](https://bbartling.github.io/open-fdd/column_map_resolvers.html)** (logical key → column in the frame). See **`mapping.example.yaml`** and **`examples/column_map_resolver_workshop/`** for Haystack / DBO / 223P patterns.
 
 ## Adding rules
 
-Drop more `.yaml` files into `rules/` (or your mounted rules directory). Start from the examples here or from the upstream **[AHU rules examples](https://github.com/bbartling/open-fdd/tree/main/examples/AHU/rules)**. For patterns and snippets, use the **[Expression rule cookbook](https://bbartling.github.io/open-fdd/expression_rule_cookbook)** and the Open-FDD documentation.
+Drop more `.yaml` files into `rules/` (or your mounted rules directory). Start from the examples here or from the upstream **[AHU rules examples](https://github.com/bbartling/open-fdd/tree/master/examples/AHU/rules)**. For patterns and snippets, use the **[Expression rule cookbook](https://bbartling.github.io/open-fdd/expression_rule_cookbook)** and the Open-FDD documentation.
+
+## Ontology demos (Brick / Haystack / DBO / 223P — no NF)
+
+The folder **`examples/column_map_resolver_workshop/`** is kept in sync with upstream **[open-fdd](https://github.com/bbartling/open-fdd/tree/master/examples/column_map_resolver_workshop)**: one command per naming style, same **`RuleRunner`** + **`column_map`** pattern the engine docs describe.
+
+```bash
+cd solutions/open-fdd-rules-engine
+pip install -r requirements.txt
+python examples/column_map_resolver_workshop/run_ontology_demo.py --list
+python examples/column_map_resolver_workshop/run_ontology_demo.py dbo
+```
+
+See **`examples/README.md`** and the workshop **`README.md`** for file layout. Refresh from open-fdd when upstream adds modes or rules.
 
 ## Offline CSV demo (RTU11 — no NF, no Docker)
 
-Shipped under **`examples/AHU/`**: **`RTU11.csv`** (same family as upstream [open-fdd AHU examples](https://github.com/bbartling/open-fdd/tree/main/examples/AHU)), **`rtu11_column_map.yaml`** (vendor columns → Brick names), and **`rules_demo/`** (bounds, flatline, one cookbook blend expression).
+Shipped under **`examples/AHU/`**: **`RTU11.csv`** (same family as upstream [open-fdd AHU examples](https://github.com/bbartling/open-fdd/tree/master/examples/AHU)), **`rtu11_column_map.yaml`** (vendor columns → Brick names), and **`rules_demo/`** (bounds, flatline, one cookbook blend expression).
 
 ```bash
 cd solutions/open-fdd-rules-engine

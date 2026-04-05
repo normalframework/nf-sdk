@@ -1,6 +1,8 @@
 # AHU example data (offline)
 
-- **`RTU11.csv`** — Copy of [open-fdd `examples/AHU/RTU11.csv`](https://github.com/bbartling/open-fdd/blob/main/examples/AHU/RTU11.csv); hourly RTU trend export for **offline** demos (no Normal Framework).
+For **Brick vs Haystack vs DBO vs 223P** naming with a tiny synthetic frame, use **`../column_map_resolver_workshop/run_ontology_demo.py`** (see **[`../README.md`](../README.md)**).
+
+- **`RTU11.csv`** — Copy of [open-fdd `examples/AHU/RTU11.csv`](https://github.com/bbartling/open-fdd/blob/master/examples/AHU/RTU11.csv); hourly RTU trend export for **offline** demos (no Normal Framework).
 - **`rtu11_column_map.yaml`** — Renames vendor columns to **Brick** names expected by Open-FDD rules ([expression cookbook](https://bbartling.github.io/open-fdd/expression_rule_cookbook.html)).
 - **`rules_demo/`** — Small rule set: bounds, flatline, and one GL36-style blend expression.
 
@@ -16,4 +18,4 @@ Use this path when teaching **AI agents** or **operators** the same `RuleRunner`
 
 ### Hybrid rules + ML notebook
 
-- **[`RTU11_hybrid_rules_and_ml.ipynb`](RTU11_hybrid_rules_and_ml.ipynb)** — Same pattern as upstream [RTU7_machine_learning.ipynb](https://github.com/bbartling/open-fdd/blob/main/examples/AHU/RTU7_machine_learning.ipynb): Open-FDD YAML rules, then **scikit-learn** regression on fan-on rows, **residual quantile** fault flag, and comparison plots. Install extras: `pip install -r examples/AHU/requirements-ml.txt`.
+- **[`RTU11_hybrid_rules_and_ml.ipynb`](RTU11_hybrid_rules_and_ml.ipynb)** — Same pattern as upstream [RTU7_machine_learning.ipynb](https://github.com/bbartling/open-fdd/blob/master/examples/AHU/RTU7_machine_learning.ipynb): Open-FDD YAML rules, then **scikit-learn** regression on fan-on rows, **residual quantile** fault flag, and comparison plots. Install extras: `pip install -r examples/AHU/requirements-ml.txt`.

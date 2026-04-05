@@ -43,6 +43,8 @@ class AppConfig:
     point_uuids: dict[str, str]
     # flag column name (e.g. sensor_bounds_flag) -> NF point + layer
     fault_outputs: dict[str, FaultOutputTarget]
+    # Optional RuleRunner.run(..., column_map=...) when rule logical names != DataFrame columns
+    runner_column_map: dict[str, str] | None = None
 
 
 def load_config(path: str | Path | None = None) -> AppConfig:
@@ -85,6 +87,17 @@ def load_config(path: str | Path | None = None) -> AppConfig:
                     uuid=str(uid), layer=str(layer)
                 )
 
+    runner_column_map: dict[str, str] | None = None
+    cm_src = raw.get("runner_column_map")
+    if cm_src is None and isinstance(raw.get("column_map"), dict):
+        cm_src = raw.get("column_map")
+    if isinstance(cm_src, dict) and cm_src:
+        nested = cm_src.get("column_map") if "column_map" in cm_src else None
+        if isinstance(nested, dict):
+            runner_column_map = {str(k): str(v) for k, v in nested.items()}
+        else:
+            runner_column_map = {str(k): str(v) for k, v in cm_src.items()}
+
     return AppConfig(
         nf=NFConfig(base_url=base),
         fetch=FetchConfig(
@@ -101,4 +114,5 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         ),
         point_uuids={str(k): str(v) for k, v in points.items()},
         fault_outputs=fault_outputs,
+        runner_column_map=runner_column_map,
     )
