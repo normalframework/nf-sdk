@@ -1,0 +1,5 @@
+connectrpc>=0.9
+httpx>=0.27
+normalframework-nf-connectrpc-python>=0.9
+normalframework-nf-protocolbuffers-python>=32.1.0
+protobuf>=5.29
