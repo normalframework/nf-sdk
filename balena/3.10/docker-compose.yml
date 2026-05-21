@@ -6,25 +6,30 @@ volumes:
 
 services:
   redis:
-    image: normalframework.azurecr.io/normalframework/redis:3.10.0-0
+    image: normalframework.azurecr.io/normalframework/redis:3.10.4-3
     ports:
       - "6379:6379"
     volumes:
       - "redis-db:/data"
 
   nf:
-    image: normalframework.azurecr.io/normalframework/nf-full:3.10.0-0
+    image: normalframework.azurecr.io/normalframework/nf-full:3.10.4-3
     network_mode: host
     privileged: true
     environment:
       - PORT=80
-    #   uncomment these to enable support for the bluetooth configuration app
-    #   - NWCONFIG_ENABLED=true
-    #   this variable sets how long after device boot the BLE configuration service is available.  For security, it's best not to leave it active forever.
-    #   - NWCONFIG_BLE_TIMEOUT=900s
-    #   - DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host/run/dbus/system_bus_socket
-    # labels:
-    #   io.balena.features.dbus: '1'
+      #   uncomment these to enable support for the bluetooth configuration app
+      - NWCONFIG_ENABLED=true
+      #   this variable sets how long after device boot the Normal
+      #   Connect configuration service is available.  For security,
+      #   it's best not to leave it active forever.
+      - NWCONFIG_BLE_TIMEOUT=0s
+      - DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host/run/dbus/system_bus_socket
+    labels:
+      # required to get balena device name
+      io.balena.features.supervisor-api: '1'
+      # needed for nwconfig / bluetooth 
+      io.balena.features.dbus: '1'
     depends_on:
       - redis
     volumes:
