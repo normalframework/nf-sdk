@@ -181,7 +181,17 @@ func recoverFile(path string, info os.FileInfo, err error) error {
 			Str("path", path).
 			Msg("Recovery failed")
 
-		if strings.Contains(err.Error(), "not permitted on chunk") {
+		errStr := err.Error()
+		// Mark files that will never succeed as .tooold so the recovery
+		// worker stops retrying them. "not permitted on chunk" means the
+		// data is outside TimescaleDB's retention window. "null value in
+		// column" / "violates not-null constraint" means the metric_id
+		// subquery returned NULL (metadata row missing or name truncated
+		// in the 36-byte WAL record) — retrying will never fix that.
+		if strings.Contains(errStr, "not permitted on chunk") ||
+			strings.Contains(errStr, "null value in column") ||
+			strings.Contains(errStr, "violates not-null constraint") {
+			log.Warn().Str("path", path).Msg("Marking unrecoverable segment as tooold")
 			os.Rename(path, path+".tooold")
 		}
 	}
