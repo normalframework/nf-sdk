@@ -296,19 +296,19 @@ DO
 }
 
 func invalidateAliases(node_id string) {
-	ctx, cancel := dbCtx()
-	defer cancel()
 	log.Info().
 		Str("node_id", node_id).
-		Msg("NDEATH: invaldiating aliases")
+		Msg("NDEATH: invalidating aliases")
 	sqlStatement := `
 UPDATE metadata
 SET metric_alias = NULL
 WHERE group_name = $1 AND node_name = $2
 `
 	for {
+		ctx, cancel := dbCtx()
 		_, err := pool.Exec(ctx, sqlStatement,
 			SPARKPLUG_GROUP_ID, node_id)
+		cancel()
 		if err != nil {
 			log.Error().Err(err).Msg("Error invalidating aliases; cannot continue since future inserts may be incorrect")
 		} else {
@@ -805,6 +805,11 @@ func makeRetryCmd(node_id string) string {
 // data from the node).
 func trackVersions(group_id string, node_id string) {
 	var TRACK_VERSION_EPOCH = 300 * time.Second
+	// After this many consecutive DESYNCED→RECOVERING cycles with no hdata
+	// received, give up and mark the node GOOD. Prevents an unbounded
+	// retry-request loop that wipes alias maps and generates .recovery files
+	// when a node cannot fulfill the requested sequence number.
+	maxRecoveryAttempts := getEnvInt("MAX_RECOVERY_ATTEMPTS", 5)
 
 	nodes_mu.Lock()
 	state := nodes[node_id]
@@ -817,10 +822,12 @@ func trackVersions(group_id string, node_id string) {
 		Uint64("lgsn", state.lgsn).
 		Msg("Loaded LGSN from database")
 
+	recoveryAttempts := 0
 	for {
 		log.Info().
 			Str("node_id", node_id).
 			Int("state", state.state).
+			Int("recovery_attempts", recoveryAttempts).
 			Bool("hdata", state.epoch_hdata_received).
 			Msg("Checking recovery state")
 
@@ -831,6 +838,16 @@ func trackVersions(group_id string, node_id string) {
 
 		switch state.state {
 		case STATE_DESYNCED:
+			if maxRecoveryAttempts > 0 && recoveryAttempts >= maxRecoveryAttempts {
+				log.Warn().
+					Str("node_id", node_id).
+					Int("attempts", recoveryAttempts).
+					Msg("Max recovery attempts reached; giving up on historical backfill")
+				state.state = STATE_GOOD
+				state.recovery_id = ""
+				recoveryAttempts = 0
+				break
+			}
 			log.Info().
 				Uint64("seq", state.lgsn).
 				Str("node_id", node_id).
@@ -839,12 +856,16 @@ func trackVersions(group_id string, node_id string) {
 				1, false, makeRetryCmd(node_id))
 			if token.Wait() && token.Error() == nil {
 				state.state = STATE_RECOVERING
+				recoveryAttempts++
 			}
 		case STATE_RECOVERING:
 			if !state.epoch_hdata_received {
 				state.state = STATE_DESYNCED
+			} else {
+				recoveryAttempts = 0
 			}
 		case STATE_GOOD:
+			recoveryAttempts = 0
 		}
 		state.epoch_hdata_received = false
 		time.Sleep(TRACK_VERSION_EPOCH)
