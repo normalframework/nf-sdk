@@ -1,0 +1,6 @@
+# Optional: hybrid rules + ML notebook (RTU11_hybrid_rules_and_ml.ipynb)
+-r ../../requirements.txt
+scikit-learn>=1.3.0
+matplotlib>=3.8.0
+jupyter>=1.0.0
+ipykernel>=6.0.0

@@ -1,0 +1,7 @@
+# PyPI — keep aligned with open-fdd engine releases (column_map workshop targets 2.0.14+).
+open-fdd>=2.0.14
+pandas>=2.0
+pyyaml>=6.0
+requests>=2.28
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0

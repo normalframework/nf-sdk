@@ -50,6 +50,7 @@ Normal offers several pre-built integrations with other systems under permissive
 | [Avuity](https://github.com/normalframework/avuity-integration) | Expose data from [Avuity](https://www.avuity.com) occupancy sensors as BACnet objects | ✔️ | | ✔️ | |
 | [ALC](https://github.com/normalframework/alc-plugin) | Import data from WebCTRL | | | ✔️ | |
 | [OPC](https://github.com/normalframework/opc-integration) | Connect to UPC-UA Servers | ✔️ | | | | 
+| [Open-FDD rules](solutions/open-fdd-rules-engine/) | Run [open-fdd](https://pypi.org/project/open-fdd/) (PyPI) YAML fault rules on NF HPL timeseries | ✔️ | | | |
 
 Release Types
 =============

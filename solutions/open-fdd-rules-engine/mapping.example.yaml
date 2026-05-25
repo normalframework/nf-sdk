@@ -1,0 +1,40 @@
+# Copy to mapping.yaml and set real NF point UUIDs (Object Explorer → export cURL / point query).
+# Brick keys must match the `brick:` classes in your Open-FDD YAML rules.
+
+nf:
+  base_url: "http://localhost:8080"
+  # Optional OAuth (same env vars as nf-sdk examples: NF_CLIENT_ID, NF_CLIENT_SECRET)
+  # Or use basic: NF_BASIC_USER=user:pass
+
+fetch:
+  lookback_hours: 24
+  resample_method: "AVERAGE"
+  resample_window: "900s"
+
+run:
+  # Docker image: /app/rules. Local: absolute path to this folder's rules/, e.g. /path/to/open-fdd-rules-engine/rules
+  rules_dir: "/app/rules"
+  poll_interval_seconds: 300
+  once: false
+
+# Map Open-FDD Brick class name → Normal Framework point UUID
+point_uuids:
+  Outside_Air_Temperature_Sensor: "00000000-0000-0000-0000-000000000001"
+  Supply_Air_Temperature_Sensor: "00000000-0000-0000-0000-000000000002"
+
+# Optional: RuleRunner.run(..., column_map=...). Use when YAML rules use different logical
+# names than the DataFrame columns above (e.g. Haystack slugs in rules, Brick columns from NF).
+# Same idea as open-fdd workshop manifests — logical key → actual column name in the frame.
+# runner_column_map:
+#   discharge_air_temp_sensor: Supply_Air_Temperature_Sensor
+
+# Optional: write last fault flag values (0/1) back to NF via POST /api/v2/command/write.
+# Map the rule's `flag` column name → BACnet (or other) point UUID + layer from NF Object Explorer.
+# Enable with POST /run {"persist": true} or env OPENFDD_PERSIST_DEFAULT=true
+# fault_outputs:
+#   bad_sensor_flag:
+#     uuid: "00000000-0000-0000-0000-000000000099"
+#     layer: "hpl:bacnet:1"
+#   flatline_flag:
+#     uuid: "00000000-0000-0000-0000-00000000009a"
+#     layer: "hpl:bacnet:1"

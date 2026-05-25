@@ -1,0 +1,36 @@
+---
+description: NF-sdk Open-FDD sidecar context and PyPI engine-only dependency plan
+globs: solutions/open-fdd-rules-engine/**/*
+alwaysApply: false
+---
+
+# Open-FDD × Normal Framework (nf-sdk)
+
+## Where it lives
+
+- **`solutions/open-fdd-rules-engine/`** exists **only in [nf-sdk](https://github.com/normalframework/nf-sdk)** (not inside the open-fdd app repo).
+- Sidecar: Python container that pulls NF **HPL** timeseries (`GET /api/v1/point/data`), builds a wide DataFrame with **Brick-named columns** via `mapping.yaml`, runs **`open_fdd.engine.RuleRunner`**, emits JSON fault summary.
+
+## Auth / config
+
+- Same patterns as nf-sdk examples: `NFURL`, `NF_CLIENT_ID` / `NF_CLIENT_SECRET` or basic auth; see `docker-compose.yml` and README in that folder.
+
+## PyPI dependency (current vs planned)
+
+- **Today:** `requirements.txt` installs **`open-fdd>=2.0.11`** from PyPI (full distribution). Prefer **`openfdd-engine`** when published for slimmer installs.
+- **Planned:** Switch imports to `openfdd-engine` if it re-exports `RuleRunner` without the full platform stack.
+
+## API vs logs
+
+- Default **`python -m openfdd_nf`**: JSON summary to **stdout** (cron/logs); drops verbose `agent_brief` / `flags_detail` from stdout.
+- **`openfdd_nf.api_app`**: **FastAPI** — `GET /health`, `/capabilities`, `/agent/context`, `/mapping`, `/rules`, `/rules/{file}`, `POST /run` (optional JSON: subset rules, stats, tail sample, persist), `POST /validate/rule`; optional **`OPENFDD_API_KEY`** (Bearer). Each **`POST /run`** → fresh **`RuleRunner`** (YAML hot reload). Optional **`fault_outputs`** in mapping → **`POST /api/v2/command/write`** when `persist` or **`OPENFDD_PERSIST_DEFAULT`**.
+- **NF integration:** [Applications SDK](https://docs.normal.dev/applications/overview/) **hooks** can call **`POST /run`**; persistence via Command API mapping or hook-driven writes.
+
+## Offline CSV demo
+
+- **`examples/AHU/RTU11.csv`** + **`rtu11_column_map.yaml`** + **`tools/offline_csv_fdd.py`** — same `RuleRunner` as NF mode; for humans, agents, and CI without `NFURL`.
+
+## When editing the sidecar
+
+- Keep Docker **PyPI-only** unless debugging.
+- Document new routes and persistence choices in `solutions/open-fdd-rules-engine/README.md`.
