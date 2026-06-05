@@ -1,0 +1,39 @@
+# Rootless Docker / Podman variant.
+# Volumes use :z so SELinux (Fedora/RHEL) relabels them as container_file_t.
+# Default data paths are under $HOME so no sudo is required.
+version: "2.2"
+services:
+
+  nf:
+    image: ${REGISTRY:-normal.azurecr.io}/normalframework/nf-full:${NF_TAG:-3.10}
+    network_mode: host
+    cap_add:
+      - NET_RAW
+      - SYS_CHROOT
+    depends_on:
+      - redis
+    volumes:
+      - ${NF_DATA_DIR}:/var/nf:z
+      - /etc/localtime:/etc/localtime:ro
+    restart: unless-stopped
+    environment:
+      - PORT=${NF_PORT:-8080}
+      - REDIS_ADDRESS=redis:6379
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: ${REGISTRY:-normal.azurecr.io}/normalframework/redis:${NF_TAG:-3.10}
+    ports:
+      - "6379:6379"
+    volumes:
+      - ${NF_REDIS_DIR}:/data:z
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
