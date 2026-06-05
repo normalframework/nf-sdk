@@ -117,10 +117,10 @@ if [ -z "$DCMD" ]; then
       # (needrestart otherwise blocks on "pending kernel upgrade" dialogs)
       export DEBIAN_FRONTEND=noninteractive
       export NEEDRESTART_MODE=a
-      # Stop unattended-upgrades so it doesn't hold the dpkg lock for 5-10 min
-      $SUDO systemctl stop unattended-upgrades apt-daily.service apt-daily-upgrade.service 2>/dev/null || true
-      $SUDO systemctl kill --kill-who=all apt-daily.service apt-daily-upgrade.service 2>/dev/null || true
-      # Wait for any lingering apt/dpkg lock to clear
+      # Kill unattended-upgrades to release the dpkg lock (SIGKILL, non-blocking)
+      $SUDO systemctl kill --signal=SIGKILL unattended-upgrades apt-daily.service \
+        apt-daily-upgrade.service 2>/dev/null || true
+      # Wait for any lingering dpkg lock to clear (up to 60s)
       _waited=0
       while $SUDO fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
         if [ $_waited -eq 0 ]; then info "Waiting for apt lock to clear..."; fi
