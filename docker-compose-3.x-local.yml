@@ -15,7 +15,7 @@
 # Welcome to the NF example docker-compose.  This file should stand up
 # a functioning NF instance on your desktop.  Before running
 # you should just check a few things:
-#  1. several containers need a writable volume, which this file puts in /tmp by default
+#  1. NF data is persisted to /var/nf and /var/nf-redis — create these or change the paths
 #  2. if the BACnet service fails to start, you may need to specify
 #   which interface to use in its environment.
 #
@@ -30,20 +30,25 @@ services:
   # the main container which runs all the NF services, load balancer,
   # and management console.
   nf:
-    image: normal.azurecr.io/normalframework/nf-full:3.9
+    image: normal.azurecr.io/normalframework/nf-full:${NF_TAG:-3.10}
 
-    # use this if you have access to an enterprise license
-    # image: normalframework.azurecr.io/normalframework/nf-full:3.8
-    
     # a debug version of each release is available for enterprise
     # customers, which has additional packages for debugging installed
     # (like nmap, tcpdump, and python), and also runs an ssh server on
     # port 22 with a default username/password of root/password.
     # don't use in production!
-    # image: normalframework.azurecr.io/normalframework/nf-debug:3.8
+    # image: normal.azurecr.io/normalframework/nf-debug:${NF_TAG:-3.10}
+
+    # host mode is required for BACnet/IP and BACnet/Ethernet
+    # if not using, you can switch to using docker networks
     network_mode: host
     depends_on:
       - redis
+
+    ## Required for rootless Podman (nf binary has cap_net_raw+cap_sys_chroot file capabilities)
+    cap_add:
+      - NET_RAW
+      - SYS_CHROOT
 
     ##
     ## Other configuration options
@@ -53,7 +58,6 @@ services:
     ## set a persistent volume for NF data.  required or else state will disappear after a restart
     volumes:
       - /var/nf:/var/nf
-      - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
 
       
@@ -64,17 +68,13 @@ services:
     # mem_limit: 1024m
     # cpus: 2.0
     
-    ## If these options are uncommented, NF will install iptables
-    ## firewall rules to disallow access to redis and on the specified
-    ## interface.
-    # 
-    # cap_add:
-    #  - NET_ADMIN
-    # environment:
+    ## To enable the built-in iptables firewall, add NET_ADMIN to cap_add above
+    ## and uncomment NORMAL_FIREWALL_INTERFACE below.
+    environment:
     #  - NORMAL_FIREWALL_INTERFACE=enp1s0
     # run the management console and API on a different port
-    #  - PORT=8080
-
+      - PORT=8080
+      - REDIS_ADDRESS=redis:6379
     ## Enable these options to mount the container read-only.  This is
     ## probably more secure but prevents you from making changes
     ## within the container (other than what is on a volume mount)
@@ -92,17 +92,16 @@ services:
     #   - APPLICATION_PATH=/http-8080/localhost
 
 
-  # Most persistent data is in redis.  This is essentially an
-  #  unmodified upstream with RediSearch and RedisTimeseries installed.
+  # Most persistent data is in redis.  Normal ships a custom redis build
+  #  with the RediSearch and RedisTimeSeries modules added.
   redis:
     ports:
-      - "6379:6379"
-    image: normal.azurecr.io/normalframework/redis:3.9
-    # image: normalframework.azurecr.io/normalframework/redis:3.8
+     - "6379:6379"
+    image: normal.azurecr.io/normalframework/redis:${NF_TAG:-3.10}
 
     ## set this or else the point database will not persist
     volumes:
-      - /var/nf-redis:/data
+     - /var/nf-redis:/data
 
     restart: unless-stopped
   
