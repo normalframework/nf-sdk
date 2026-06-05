@@ -426,19 +426,21 @@ ok "Wrote $ENV_FILE"
 # ── Pull images ───────────────────────────────────────────────────────────────
 step "Pulling containers (this may take a few minutes on first install)"
 cd "$INSTALL_DIR"
-# podman-compose doesn't support --quiet / --quiet-pull
-case "$CCMD" in
-  *podman-compose*) $SUDO_DCMD $CCMD pull ;;
-  *)                $SUDO_DCMD $CCMD pull --quiet ;;
-esac
+# podman-compose (called as "podman compose" or directly) doesn't accept --quiet
+if [ "$DCMD" = "podman" ]; then
+  $SUDO_DCMD $CCMD pull
+else
+  $SUDO_DCMD $CCMD pull --quiet
+fi
 ok "Images pulled"
 
 # ── Start NF ──────────────────────────────────────────────────────────────────
 step "Starting Normal Framework"
-case "$CCMD" in
-  *podman-compose*) $SUDO_DCMD $CCMD up -d ;;
-  *)                $SUDO_DCMD $CCMD up -d --quiet-pull ;;
-esac
+if [ "$DCMD" = "podman" ]; then
+  $SUDO_DCMD $CCMD up -d
+else
+  $SUDO_DCMD $CCMD up -d --quiet-pull
+fi
 ok "Containers started"
 
 # ── Wait for console ──────────────────────────────────────────────────────────

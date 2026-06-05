@@ -34,7 +34,7 @@ pve() { $PROXMOX_SSH "$@" < /dev/null; }
 wait_for_ssh() {
   local user=$1 ip=$2
   local waited=0
-  while [ $waited -lt 120 ]; do
+  while [ $waited -lt 180 ]; do
     if ssh -n $VM_SSH_OPTS "$user@$ip" true 2>/dev/null; then
       return 0
     fi
