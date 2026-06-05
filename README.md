@@ -14,13 +14,6 @@ curl -fsSL https://raw.githubusercontent.com/normalframework/nf-sdk/master/insta
 
 The installer will ask you to paste your `docker login` command from the [Normal Portal](https://portal.normal-online.net) (**Settings → API Keys**).
 
-For non-interactive installs (CI/CD, provisioning scripts), pass credentials as environment variables instead:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/normalframework/nf-sdk/master/install.sh | \
-  NF_USERNAME=<username> NF_PASSWORD=<token> sh
-```
-
 When it finishes, the management console is at **http://localhost:8080**.
 
 ### What the installer does
