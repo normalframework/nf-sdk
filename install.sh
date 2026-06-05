@@ -117,6 +117,16 @@ if [ -z "$DCMD" ]; then
       # (needrestart otherwise blocks on "pending kernel upgrade" dialogs)
       export DEBIAN_FRONTEND=noninteractive
       export NEEDRESTART_MODE=a
+      # Stop unattended-upgrades so it doesn't hold the dpkg lock for 5-10 min
+      $SUDO systemctl stop unattended-upgrades apt-daily.service apt-daily-upgrade.service 2>/dev/null || true
+      $SUDO systemctl kill --kill-who=all apt-daily.service apt-daily-upgrade.service 2>/dev/null || true
+      # Wait for any lingering apt/dpkg lock to clear
+      _waited=0
+      while $SUDO fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
+        [ $_waited -eq 0 ] && info "Waiting for apt lock to clear..."
+        sleep 2; _waited=$((_waited+2))
+        [ $_waited -gt 60 ] && break
+      done
       $SUDO apt-get update -q
       $SUDO apt-get install -y -q ca-certificates curl gnupg lsb-release
       $SUDO install -m 0755 -d /etc/apt/keyrings
@@ -181,6 +191,8 @@ fi
 CCMD=""
 if $DCMD compose version >/dev/null 2>&1; then
   CCMD="$DCMD compose"
+elif command -v podman-compose >/dev/null 2>&1; then
+  CCMD="podman-compose"
 elif command -v docker-compose >/dev/null 2>&1; then
   CCMD="docker-compose"
 fi
@@ -192,11 +204,18 @@ if [ -z "$CCMD" ]; then
       $SUDO apt-get install -y -q docker-compose-plugin 2>/dev/null || true
       ;;
     fedora|rhel|centos|rocky|almalinux)
-      $SUDO dnf -y install docker-compose-plugin 2>/dev/null || true
+      # podman-compose provides "podman compose"; docker-compose-plugin is for Docker installs
+      if [ "$DCMD" = "podman" ]; then
+        $SUDO dnf -y install podman-compose 2>/dev/null || true
+      else
+        $SUDO dnf -y install docker-compose-plugin 2>/dev/null || true
+      fi
       ;;
   esac
   if $DCMD compose version >/dev/null 2>&1; then
     CCMD="$DCMD compose"
+  elif command -v podman-compose >/dev/null 2>&1; then
+    CCMD="podman-compose"
   else
     die "docker compose not found. Install it from https://docs.docker.com/compose/install/ and try again."
   fi

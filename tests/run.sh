@@ -80,9 +80,9 @@ run_test() {
         bash ~/install.sh > ~/install.log 2>&1; echo \\\$? > ~/install.rc\" \
        </dev/null >/dev/null 2>&1 &"
 
-  # Poll until install.rc appears (max 10 min)
+  # Poll until install.rc appears (max 15 min)
   local waited=0
-  while [ $waited -lt 600 ]; do
+  while [ $waited -lt 900 ]; do
     sleep 10; waited=$((waited+10))
     if ssh -n $VM_SSH_OPTS "$user@$ip" "[ -f ~/install.rc ]" 2>/dev/null; then
       break
@@ -91,10 +91,15 @@ run_test() {
   done
   printf "\n"
 
-  local install_rc
-  install_rc=$(ssh -n $VM_SSH_OPTS "$user@$ip" "cat ~/install.rc 2>/dev/null || echo 1")
-  local install_log
-  install_log=$(ssh -n $VM_SSH_OPTS "$user@$ip" "cat ~/install.log 2>/dev/null")
+  # Retry SSH up to 3 times in case of transient blip after install
+  local install_rc="" install_log=""
+  local tries=0
+  while [ $tries -lt 3 ] && [ -z "$install_rc" ]; do
+    install_rc=$(ssh -n $VM_SSH_OPTS "$user@$ip" "cat ~/install.rc 2>/dev/null || echo 1" 2>/dev/null || true)
+    tries=$((tries+1))
+    [ -z "$install_rc" ] && { printf "." ; sleep 5; }
+  done
+  install_log=$(ssh -n $VM_SSH_OPTS "$user@$ip" "cat ~/install.log 2>/dev/null" 2>/dev/null || true)
   printf "%s\n" "$install_log"
   if [ "${install_rc:-1}" != "0" ]; then
     detail="install.sh exited $install_rc"
