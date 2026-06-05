@@ -426,12 +426,19 @@ ok "Wrote $ENV_FILE"
 # ── Pull images ───────────────────────────────────────────────────────────────
 step "Pulling containers (this may take a few minutes on first install)"
 cd "$INSTALL_DIR"
-$SUDO_DCMD $CCMD pull --quiet
+# podman-compose doesn't support --quiet / --quiet-pull
+case "$CCMD" in
+  *podman-compose*) $SUDO_DCMD $CCMD pull ;;
+  *)                $SUDO_DCMD $CCMD pull --quiet ;;
+esac
 ok "Images pulled"
 
 # ── Start NF ──────────────────────────────────────────────────────────────────
 step "Starting Normal Framework"
-$SUDO_DCMD $CCMD up -d --quiet-pull
+case "$CCMD" in
+  *podman-compose*) $SUDO_DCMD $CCMD up -d ;;
+  *)                $SUDO_DCMD $CCMD up -d --quiet-pull ;;
+esac
 ok "Containers started"
 
 # ── Wait for console ──────────────────────────────────────────────────────────
