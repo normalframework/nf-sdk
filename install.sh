@@ -123,9 +123,9 @@ if [ -z "$DCMD" ]; then
       # Wait for any lingering apt/dpkg lock to clear
       _waited=0
       while $SUDO fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
-        [ $_waited -eq 0 ] && info "Waiting for apt lock to clear..."
+        if [ $_waited -eq 0 ]; then info "Waiting for apt lock to clear..."; fi
         sleep 2; _waited=$((_waited+2))
-        [ $_waited -gt 60 ] && break
+        if [ $_waited -gt 60 ]; then break; fi
       done
       $SUDO apt-get update -q
       $SUDO apt-get install -y -q ca-certificates curl gnupg lsb-release
