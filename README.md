@@ -9,11 +9,17 @@ Welcome to the NF SDK. This repository contains an installer script, `docker-com
 Run this on any Linux machine (Ubuntu 22.04+, Fedora 42+, or any system with Docker/Podman already installed):
 
 ```sh
+curl -fsSL https://raw.githubusercontent.com/normalframework/nf-sdk/master/install.sh | sh
+```
+
+The installer will ask you to paste your `docker login` command from the [Normal Portal](https://portal.normal-online.net) (**Settings → API Keys**).
+
+For non-interactive installs (CI/CD, provisioning scripts), pass credentials as environment variables instead:
+
+```sh
 curl -fsSL https://raw.githubusercontent.com/normalframework/nf-sdk/master/install.sh | \
   NF_USERNAME=<username> NF_PASSWORD=<token> sh
 ```
-
-Your credentials are available in the [Normal Portal](https://portal.normal-online.net) under **Settings → API Keys**. The installer will prompt for them interactively if you omit the environment variables.
 
 When it finishes, the management console is at **http://localhost:8080**.
 
