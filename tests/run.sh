@@ -70,20 +70,39 @@ run_test() {
   printf "[→] Copying install.sh...\n"
   scp $VM_SSH_OPTS "$INSTALL_SH" "$user@$ip:~/install.sh"
 
-  # Run install.sh with credentials via env vars
-  printf "[→] Running install.sh...\n"
+  # Run install.sh detached via nohup so bridge network creation can't break
+  # the SSH pipe. Poll for ~/install.rc (written by wrapper) then fetch log.
+  printf "[→] Running install.sh (detached)...\n"
+  ssh $VM_SSH_OPTS "$user@$ip" \
+    "rm -f ~/install.rc ~/install.log; \
+     nohup bash -c \
+       \"NF_USERNAME='$NF_USERNAME' NF_PASSWORD='$NF_PASSWORD' NF_RELEASE='$NF_RELEASE' \
+        bash ~/install.sh > ~/install.log 2>&1; echo \\\$? > ~/install.rc\" \
+       </dev/null >/dev/null 2>&1 &"
+
+  # Poll until install.rc appears (max 10 min)
+  local waited=0
+  while [ $waited -lt 600 ]; do
+    sleep 10; waited=$((waited+10))
+    if ssh $VM_SSH_OPTS "$user@$ip" "[ -f ~/install.rc ]" 2>/dev/null; then
+      break
+    fi
+    printf "."
+  done
+  printf "\n"
+
+  local install_rc
+  install_rc=$(ssh $VM_SSH_OPTS "$user@$ip" "cat ~/install.rc 2>/dev/null || echo 1")
   local install_log
-  if install_log=$(ssh $VM_SSH_OPTS "$user@$ip" \
-    "NF_USERNAME='$NF_USERNAME' NF_PASSWORD='$NF_PASSWORD' NF_RELEASE='$NF_RELEASE' \
-     bash ~/install.sh" 2>&1); then
-    printf "[→] install.sh exited 0\n"
-  else
-    detail="install.sh exited $? — see log"
+  install_log=$(ssh $VM_SSH_OPTS "$user@$ip" "cat ~/install.log 2>/dev/null")
+  printf "%s\n" "$install_log"
+  if [ "${install_rc:-1}" != "0" ]; then
+    detail="install.sh exited $install_rc"
     printf "${RED}[✗] $detail${NC}\n"
-    printf "%s\n" "$install_log" | tail -20
     RESULTS+=("$name|FAIL|$detail")
     return
   fi
+  printf "[→] install.sh exited 0\n"
 
   # Verify containers are running
   printf "[→] Checking containers...\n"

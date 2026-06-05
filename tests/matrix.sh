@@ -17,7 +17,7 @@ IMAGE_122="https://download.fedoraproject.org/pub/fedora/linux/releases/41/Cloud
 PROXMOX_HOST="root@n1"
 PROXMOX_SSH="ssh -i $HOME/.ssh/id_ed25519_nftest $PROXMOX_HOST"
 VM_SSH_KEY="$HOME/.ssh/id_ed25519_nftest"
-VM_SSH_OPTS="-i $VM_SSH_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=5"
+VM_SSH_OPTS="-i $VM_SSH_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o ServerAliveInterval=15 -o ServerAliveCountMax=40"
 STORAGE="local-lvm"
 BRIDGE="vmbr0"
 GATEWAY="192.168.103.1"
