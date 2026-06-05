@@ -14,7 +14,7 @@ ok()   { printf "${GREEN}[✓]${NC} %s\n" "$*"; }
 info() { printf "${BOLD}[→]${NC} %s\n" "$*"; }
 warn() { printf "${YELLOW}[!]${NC} %s\n" "$*"; }
 die()  { printf "${RED}[✗]${NC} %s\n" "$*" >&2; exit 1; }
-pve()  { $PROXMOX_SSH "$@"; }
+pve()  { $PROXMOX_SSH "$@" < /dev/null; }
 
 # ── Delete old fedora test VM ────────────────────────────────────────────────
 if pve qm status 118 &>/dev/null; then
@@ -31,13 +31,13 @@ pve pvesm set local --content 'iso,snippets,vztmpl,backup' 2>/dev/null || true
 
 # ── Cloud-init vendor snippet (installs qemu-guest-agent on first boot) ──────
 info "Writing cloud-init vendor snippet..."
-pve bash -c "cat > /var/lib/vz/snippets/nf-test-vendor.yml" <<'SNIPPET'
-#cloud-config
-runcmd:
-  - which apt-get && apt-get install -y -q qemu-guest-agent || true
-  - which dnf  && dnf  install -y -q qemu-guest-agent || true
-  - systemctl enable --now qemu-guest-agent || true
-SNIPPET
+printf '%s\n' \
+  '#cloud-config' \
+  'runcmd:' \
+  '  - which apt-get && apt-get install -y -q qemu-guest-agent || true' \
+  '  - which dnf  && dnf  install -y -q qemu-guest-agent || true' \
+  '  - systemctl enable --now qemu-guest-agent || true' \
+  | $PROXMOX_SSH "cat > /var/lib/vz/snippets/nf-test-vendor.yml"
 ok "Vendor snippet written"
 
 # ── Per-VM setup ─────────────────────────────────────────────────────────────
@@ -120,7 +120,7 @@ setup_vm() {
   pve qm start $vmid
   local waited=0
   while [ $waited -lt 180 ]; do
-    if $PROXMOX_SSH ssh $VM_SSH_OPTS "$user@$ip" true 2>/dev/null; then
+    if $PROXMOX_SSH ssh $VM_SSH_OPTS "$user@$ip" true < /dev/null 2>/dev/null; then
       break
     fi
     sleep 5; waited=$((waited+5)); printf "."
@@ -134,7 +134,7 @@ setup_vm() {
   # cloud-init status --wait blocks until all modules finish (installs, runcmds, etc.)
   info "Waiting for cloud-init to complete (may take a few minutes)..."
   $PROXMOX_SSH ssh $VM_SSH_OPTS "$user@$ip" \
-    "sudo cloud-init status --wait --long" 2>/dev/null || true
+    "sudo cloud-init status --wait --long" < /dev/null 2>/dev/null || true
   ok "cloud-init done"
 
   # Snapshot
@@ -153,7 +153,7 @@ while read -r vmid name ip user snapshot; do
   image_url="${!image_var}"
   [ -z "$image_url" ] && die "No image URL defined for VMID $vmid (set IMAGE_$vmid in matrix.sh)"
   setup_vm "$vmid" "$name" "$ip" "$user" "$snapshot" "$image_url"
-done <<< "$MATRIX"
+done < <(printf '%s\n' "$MATRIX")
 
 printf "\n${GREEN}${BOLD}All VMs created and snapshotted.${NC}\n"
 printf "Run tests with: bash tests/run.sh\n\n"

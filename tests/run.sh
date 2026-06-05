@@ -29,13 +29,13 @@ PASS="${GREEN}PASS${NC}"; FAIL="${RED}FAIL${NC}"
 
 RESULTS=()
 
-pve() { $PROXMOX_SSH "$@"; }
+pve() { $PROXMOX_SSH "$@" < /dev/null; }
 
 wait_for_ssh() {
   local user=$1 ip=$2
   local waited=0
   while [ $waited -lt 120 ]; do
-    if ssh $VM_SSH_OPTS "$user@$ip" true 2>/dev/null; then
+    if ssh -n $VM_SSH_OPTS "$user@$ip" true 2>/dev/null; then
       return 0
     fi
     sleep 5; waited=$((waited+5)); printf "."
@@ -68,12 +68,12 @@ run_test() {
 
   # Copy install.sh
   printf "[→] Copying install.sh...\n"
-  scp $VM_SSH_OPTS "$INSTALL_SH" "$user@$ip:~/install.sh"
+  scp $VM_SSH_OPTS "$INSTALL_SH" "$user@$ip:~/install.sh" < /dev/null
 
   # Run install.sh detached via nohup so bridge network creation can't break
   # the SSH pipe. Poll for ~/install.rc (written by wrapper) then fetch log.
   printf "[→] Running install.sh (detached)...\n"
-  ssh $VM_SSH_OPTS "$user@$ip" \
+  ssh -n $VM_SSH_OPTS "$user@$ip" \
     "rm -f ~/install.rc ~/install.log; \
      nohup bash -c \
        \"NF_USERNAME='$NF_USERNAME' NF_PASSWORD='$NF_PASSWORD' NF_RELEASE='$NF_RELEASE' \
@@ -84,7 +84,7 @@ run_test() {
   local waited=0
   while [ $waited -lt 600 ]; do
     sleep 10; waited=$((waited+10))
-    if ssh $VM_SSH_OPTS "$user@$ip" "[ -f ~/install.rc ]" 2>/dev/null; then
+    if ssh -n $VM_SSH_OPTS "$user@$ip" "[ -f ~/install.rc ]" 2>/dev/null; then
       break
     fi
     printf "."
@@ -92,9 +92,9 @@ run_test() {
   printf "\n"
 
   local install_rc
-  install_rc=$(ssh $VM_SSH_OPTS "$user@$ip" "cat ~/install.rc 2>/dev/null || echo 1")
+  install_rc=$(ssh -n $VM_SSH_OPTS "$user@$ip" "cat ~/install.rc 2>/dev/null || echo 1")
   local install_log
-  install_log=$(ssh $VM_SSH_OPTS "$user@$ip" "cat ~/install.log 2>/dev/null")
+  install_log=$(ssh -n $VM_SSH_OPTS "$user@$ip" "cat ~/install.log 2>/dev/null")
   printf "%s\n" "$install_log"
   if [ "${install_rc:-1}" != "0" ]; then
     detail="install.sh exited $install_rc"
@@ -107,7 +107,7 @@ run_test() {
   # Verify containers are running
   printf "[→] Checking containers...\n"
   local containers
-  containers=$(ssh $VM_SSH_OPTS "$user@$ip" \
+  containers=$(ssh -n $VM_SSH_OPTS "$user@$ip" \
     "docker ps 2>/dev/null || podman ps 2>/dev/null" 2>&1)
   local nf_up redis_up
   nf_up=$(echo "$containers" | grep -c "nf-full" || true)
@@ -123,7 +123,7 @@ run_test() {
   # Verify HTTP console responds
   printf "[→] Checking console on port 8080...\n"
   local http_code
-  http_code=$(ssh $VM_SSH_OPTS "$user@$ip" \
+  http_code=$(ssh -n $VM_SSH_OPTS "$user@$ip" \
     "curl -sf -o /dev/null -w '%{http_code}' http://localhost:8080" 2>/dev/null || echo "000")
 
   if [ "$http_code" = "200" ]; then
@@ -146,7 +146,7 @@ run_test() {
 while read -r vmid name ip user snapshot; do
   [ -z "$vmid" ] && continue
   run_test "$vmid" "$name" "$ip" "$user" "$snapshot" || true
-done <<< "$MATRIX"
+done < <(printf '%s\n' "$MATRIX")
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 printf "\n${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
