@@ -120,13 +120,9 @@ if [ -z "$DCMD" ]; then
       # Kill unattended-upgrades to release the dpkg lock (SIGKILL, non-blocking)
       $SUDO systemctl kill --signal=SIGKILL unattended-upgrades apt-daily.service \
         apt-daily-upgrade.service 2>/dev/null || true
-      # Wait for any lingering dpkg lock to clear (up to 60s)
-      _waited=0
-      while $SUDO fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
-        if [ $_waited -eq 0 ]; then info "Waiting for apt lock to clear..."; fi
-        sleep 2; _waited=$((_waited+2))
-        if [ $_waited -gt 60 ]; then break; fi
-      done
+      sleep 1  # let kernel release dpkg locks from killed processes
+      # Fix any interrupted dpkg state from the SIGKILL
+      $SUDO dpkg --configure -a 2>/dev/null || true
       $SUDO apt-get update -q
       $SUDO apt-get install -y -q ca-certificates curl gnupg lsb-release
       $SUDO install -m 0755 -d /etc/apt/keyrings
