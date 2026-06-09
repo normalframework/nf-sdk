@@ -18,7 +18,6 @@ services:
     restart: unless-stopped
     environment:
       - PORT=${NF_PORT:-8080}
-      - REDIS_ADDRESS=redis:6379
     logging:
       driver: json-file
       options:
