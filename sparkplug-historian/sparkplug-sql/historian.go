@@ -861,10 +861,12 @@ func trackVersions(group_id string, node_id string) {
 		case STATE_RECOVERING:
 			if !state.epoch_hdata_received {
 				state.state = STATE_DESYNCED
-			} else {
-				recoveryAttempts = 0
 			}
 		case STATE_GOOD:
+			// Only reset on full recovery (NDATA UUID match → STATE_GOOD).
+			// Partial hdata in RECOVERING does not reset the counter — a node
+			// that keeps bouncing DESYNCED→RECOVERING with only heartbeat
+			// traffic would otherwise never exhaust the limit.
 			recoveryAttempts = 0
 		}
 		state.epoch_hdata_received = false
