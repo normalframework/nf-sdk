@@ -77,17 +77,6 @@ ask_secret() {
   eval "$_var=\$_input"
 }
 
-# Open a URL in the user's default browser if we can find a launcher.
-open_browser() {
-  for _b in xdg-open open sensible-browser x-www-browser; do
-    if command -v "$_b" >/dev/null 2>&1; then
-      "$_b" "$1" >/dev/null 2>&1 &
-      return 0
-    fi
-  done
-  return 1
-}
-
 # ── Banner ────────────────────────────────────────────────────────────────────
 printf "${BOLD}"
 cat <<'BANNER'
@@ -109,17 +98,8 @@ printf "${BOLD}Normal Framework Installer${NC} — version %s\n\n" "$NF_TAG"
 # ── Prerequisites ─────────────────────────────────────────────────────────────
 step "Checking prerequisites"
 
-# Remap ports if already in use
-_free_nf=$(find_free_port "$NF_PORT")
-if [ "$_free_nf" != "$NF_PORT" ]; then
-  warn "Port $NF_PORT in use, using $_free_nf instead"
-  NF_PORT="$_free_nf"
-fi
-_free_redis=$(find_free_port "$NF_REDIS_PORT")
-if [ "$_free_redis" != "$NF_REDIS_PORT" ]; then
-  warn "Port $NF_REDIS_PORT in use, using $_free_redis for Redis instead"
-  NF_REDIS_PORT="$_free_redis"
-fi
+# Port selection happens after the install dir is known (below), so a re-run can
+# reuse the existing install's ports instead of remapping onto a second instance.
 
 # OS
 OS_ID="unknown"
@@ -269,6 +249,31 @@ else
   INSTALL_DIR="${INSTALL_DIR:-/opt/nf}"
   NF_DATA_DIR="${NF_DATA_DIR:-/var/nf}"
   NF_REDIS_DIR="${NF_REDIS_DIR:-/var/nf-redis}"
+fi
+
+ENV_FILE="$INSTALL_DIR/.env"
+
+# ── Port selection ────────────────────────────────────────────────────────────
+# On a re-run (existing install) reuse the ports already in .env so we upgrade the
+# same instance in place. On a fresh install, pick free ports if the defaults are taken.
+_read_env_var() {  # $1=var name -> value from an existing (possibly root-owned) .env
+  { $SUDO cat "$ENV_FILE" 2>/dev/null || cat "$ENV_FILE" 2>/dev/null; } \
+    | grep "^$1=" | head -1 | cut -d= -f2-
+}
+if [ -f "$ENV_FILE" ] || { [ -n "$SUDO" ] && $SUDO test -f "$ENV_FILE"; }; then
+  IS_UPGRADE=true
+  _e_nf="$(_read_env_var NF_PORT)";       [ -n "$_e_nf" ] && NF_PORT="$_e_nf"
+  _e_redis="$(_read_env_var NF_REDIS_PORT)"; [ -n "$_e_redis" ] && NF_REDIS_PORT="$_e_redis"
+  info "Existing install at $INSTALL_DIR — upgrading in place (console :$NF_PORT, redis :$NF_REDIS_PORT)"
+else
+  _free_nf=$(find_free_port "$NF_PORT")
+  if [ "$_free_nf" != "$NF_PORT" ]; then
+    warn "Port $NF_PORT in use, using $_free_nf instead"; NF_PORT="$_free_nf"
+  fi
+  _free_redis=$(find_free_port "$NF_REDIS_PORT")
+  if [ "$_free_redis" != "$NF_REDIS_PORT" ]; then
+    warn "Port $NF_REDIS_PORT in use, using $_free_redis for Redis instead"; NF_REDIS_PORT="$_free_redis"
+  fi
 fi
 
 # ── Registry ──────────────────────────────────────────────────────────────────
@@ -427,7 +432,6 @@ fi
 step "Setting up docker-compose.yml"
 
 COMPOSE_FILE="$INSTALL_DIR/docker-compose.yml"
-ENV_FILE="$INSTALL_DIR/.env"
 
 if [ "$ROOTLESS" = "true" ]; then
   COMPOSE_VARIANT="linux-rootless"
@@ -435,22 +439,20 @@ else
   COMPOSE_VARIANT="linux"
 fi
 
-if [ -f "$COMPOSE_FILE" ]; then
-  warn "docker-compose.yml already exists at $COMPOSE_FILE — skipping"
-  warn "Delete it and re-run to pull a fresh copy"
+# Always fetch the current compose. It's a parameterized template driven entirely by
+# .env, so overwriting is safe and ensures re-runs/upgrades pick up compose fixes
+# instead of keeping a stale copy.
+info "Downloading compose/$COMPOSE_VARIANT.yml..."
+_tmp="$(mktemp)"
+curl -fsSL "$COMPOSE_BASE_URL/$COMPOSE_VARIANT.yml" -o "$_tmp" \
+  || die "Failed to download compose file from $COMPOSE_BASE_URL/$COMPOSE_VARIANT.yml"
+if [ -w "$INSTALL_DIR" ]; then
+  mv "$_tmp" "$COMPOSE_FILE"
 else
-  info "Downloading compose/$COMPOSE_VARIANT.yml..."
-  _tmp="$(mktemp)"
-  curl -fsSL "$COMPOSE_BASE_URL/$COMPOSE_VARIANT.yml" -o "$_tmp" \
-    || die "Failed to download compose file from $COMPOSE_BASE_URL/$COMPOSE_VARIANT.yml"
-  if [ -w "$INSTALL_DIR" ]; then
-    mv "$_tmp" "$COMPOSE_FILE"
-  else
-    $SUDO cp "$_tmp" "$COMPOSE_FILE"
-    rm -f "$_tmp"
-  fi
-  ok "Downloaded compose/$COMPOSE_VARIANT.yml → $COMPOSE_FILE"
+  $SUDO cp "$_tmp" "$COMPOSE_FILE"
+  rm -f "$_tmp"
 fi
+ok "Downloaded compose/$COMPOSE_VARIANT.yml → $COMPOSE_FILE"
 
 # Compute memory limits from total RAM (redis=33%, nf=50%)
 _mem_kb=$(awk '/MemTotal/ { print $2 }' /proc/meminfo 2>/dev/null || echo 0)
@@ -541,16 +543,26 @@ _json_str() {
 if [ "$NF_RELEASE" = "ga" ] && [ "${READY:-false}" = "true" ]; then
   step "Activate a license"
 
-  # Ask whether to activate now. Set NF_ACTIVATE=yes|no to answer non-interactively.
-  # Choosing yes opens a browser sign-in where you pick a free demo or an existing
-  # license; choosing no leaves the box unlicensed to activate later from the console.
+  # Set NF_ACTIVATE=yes|no to answer non-interactively. "yes" prints a sign-in link
+  # (open it on any device) to pick a free demo or an existing license; "no" leaves the
+  # box unlicensed to activate later from the console.
   ACTIVATE="${NF_ACTIVATE:-}"
+
+  # Skip activation if the box already reports a license (e.g. this is an upgrade/re-run).
+  if [ -z "$ACTIVATE" ]; then
+    _info="$(curl -sf "http://localhost:$NF_PORT/api/v1/platform/info" 2>/dev/null || true)"
+    if printf '%s' "$_info" | grep -q '"license"[^}]*"name"[[:space:]]*:[[:space:]]*"[^"]'; then
+      info "This site is already licensed — skipping activation."
+      ACTIVATE=no
+    fi
+  fi
+
   if [ -z "$ACTIVATE" ]; then
     if [ -r /dev/tty ]; then
-      ask _ANS "Activate a license now? (opens a browser to sign in) [Y/n]" "Y"
+      ask _ANS "Activate a license now? (sign in from any device) [Y/n]" "Y"
       case "$_ANS" in [Nn]*) ACTIVATE=no ;; *) ACTIVATE=yes ;; esac
     else
-      ACTIVATE=yes   # no terminal: proceed and print the URL + code for headless sign-in
+      ACTIVATE=yes   # no terminal: proceed and print the URL + code
     fi
   fi
 fi
@@ -577,15 +589,10 @@ if [ "$NF_RELEASE" = "ga" ] && [ "${READY:-false}" = "true" ] && [ "${ACTIVATE:-
     warn "Couldn't start device sign-in with the portal."
     warn "Activate manually from the console at $BOX"
   else
-    printf "\n  ${BOLD}Sign in to activate your free site:${NC}\n"
-    printf "    URL:  ${BOLD}%s${NC}\n" "$VERIFY_URL"
-    [ -n "$USER_CODE" ] && printf "    Code: ${BOLD}%s${NC}\n" "$USER_CODE"
     printf "\n"
-    if open_browser "$VERIFY_URL"; then
-      info "Opened your browser to sign in"
-    else
-      warn "Couldn't open a browser here — open the URL above on any device"
-    fi
+    printf "  ${BOLD}To finish, open this link on any device and sign in:${NC}\n\n"
+    printf "    ${BOLD}${BLUE}%s${NC}\n\n" "$VERIFY_URL"
+    [ -n "$USER_CODE" ] && printf "    verification code: ${BOLD}%s${NC}\n\n" "$USER_CODE"
 
     # 3. Poll the portal until the user approves, then install the license on the box.
     printf "Waiting for you to sign in "
