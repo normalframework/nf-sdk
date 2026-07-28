@@ -581,68 +581,45 @@ if [ "$NF_RELEASE" = "ga" ]; then
   fi
 fi
 
+# Percent-encode the +, / and = characters a base64 machine id can contain, so it survives
+# as a URL query parameter.
+_urlencode_b64() {
+  printf '%s' "$1" | sed 's/+/%2B/g; s|/|%2F|g; s/=/%3D/g'
+}
+
 if [ "$NF_RELEASE" = "ga" ] && [ "${ACTIVATE:-yes}" != "no" ]; then
   BOX="http://localhost:$NF_PORT"
 
-  # 1. Machine id + version, from the info already fetched above.
+  # Read the box machine id + version from the info already fetched above, and build a
+  # portal link that carries them. The user opens the link, signs in, picks a plan, and the
+  # portal hands back an activation token to paste here. (The box can't call the portal's
+  # anonymous API directly, so licensing is done browser-side + a local SetLicense.)
   MID="$(printf '%s' "$INFO" | _json_str machineInfo)"
   BOX_VERSION="$(printf '%s' "$INFO" | _json_str version)"
   DEVICE_NAME="$(hostname 2>/dev/null || echo "Normal Site")"
+  ACTIVATE_URL="$PORTAL_URL/activate?mid=$(_urlencode_b64 "$MID")&version=$BOX_VERSION&name=$(printf '%s' "$DEVICE_NAME" | sed 's/ /%20/g')"
 
-  # 2. Start the device-authorization grant on the portal.
-  START_BODY="$(printf '{"mid":"%s","version":"%s","name":"%s"}' "$MID" "$BOX_VERSION" "$DEVICE_NAME")"
-  START="$(curl -sf -X POST "$PORTAL_URL/api/v1/license/device/start" \
-    -H 'Content-Type: application/json' -d "$START_BODY" 2>/dev/null || true)"
+  printf "\n"
+  printf "  ${BOLD}1.${NC} Open this link on any device and sign in:\n\n"
+  printf "     ${BOLD}${BLUE}%s${NC}\n\n" "$ACTIVATE_URL"
+  printf "  ${BOLD}2.${NC} Choose a plan, then copy the activation token it shows you.\n\n"
 
-  DEVICE_CODE="$(printf '%s' "$START" | _json_str deviceCode)"
-  USER_CODE="$(printf '%s' "$START" | _json_str userCode)"
-  VERIFY_URL="$(printf '%s' "$START" | _json_str verificationUriComplete)"
-
-  if [ -z "$DEVICE_CODE" ]; then
-    warn "Couldn't start device sign-in with the portal."
-    warn "Activate manually from the console at $BOX"
-  else
-    printf "\n"
-    printf "  ${BOLD}To finish, open this link on any device and sign in:${NC}\n\n"
-    printf "    ${BOLD}${BLUE}%s${NC}\n\n" "$VERIFY_URL"
-    [ -n "$USER_CODE" ] && printf "    verification code: ${BOLD}%s${NC}\n\n" "$USER_CODE"
-
-    # 3. Poll the portal until the user approves, then install the license on the box.
-    printf "Waiting for you to sign in "
-    _waited=0
-    while [ "$_waited" -lt 600 ]; do
-      POLL="$(curl -sf -X POST "$PORTAL_URL/api/v1/license/device/poll" \
-        -H 'Content-Type: application/json' \
-        -d "$(printf '{"deviceCode":"%s"}' "$DEVICE_CODE")" 2>/dev/null || true)"
-      POLL_STATUS="$(printf '%s' "$POLL" | _json_str status)"
-      case "$POLL_STATUS" in
-        *APPROVED*)
-          LICENSE_JWT="$(printf '%s' "$POLL" | _json_str license)"
-          # 4. Install the license on the box (localhost is allowed without auth).
-          if curl -sf -X POST "$BOX/api/v1/platform/license" \
-              -H 'Content-Type: application/json' \
-              -d "$(printf '{"license":"%s"}' "$LICENSE_JWT")" >/dev/null 2>&1; then
-            printf " ${GREEN}linked!${NC}\n"
-            LINKED=true
-          else
-            printf "\n"
-            warn "Signed in, but installing the license on the box failed."
-          fi
-          break
-          ;;
-        *DENIED*|*EXPIRED*)
-          printf "\n"
-          warn "Sign-in was ${POLL_STATUS#DEVICE_PROVISION_STATUS_} — re-run the installer to try again."
-          break
-          ;;
-      esac
-      printf "."
-      sleep 3; _waited=$((_waited + 3))
-    done
-    if [ "${LINKED:-false}" != "true" ] && [ -z "$POLL_STATUS" ]; then
-      printf "\n"
-      warn "Not linked yet — finish signing in at the URL above, then activate from $BOX"
+  if [ -r /dev/tty ]; then
+    ask NF_TOKEN "  3. Paste the activation token here"
+    if [ -n "$NF_TOKEN" ]; then
+      if curl -sf -X POST "$BOX/api/v1/platform/license" \
+          -H 'Content-Type: application/json' \
+          -d "$(printf '{"license":"%s"}' "$NF_TOKEN")" >/dev/null 2>&1; then
+        ok "Device licensed!"
+        LINKED=true
+      else
+        warn "That token was rejected — re-run the installer and paste it again."
+      fi
+    else
+      warn "No token entered — re-run the installer to activate later."
     fi
+  else
+    warn "No terminal to paste the token — re-run interactively, or set the license from the console."
   fi
 fi
 
@@ -663,6 +640,7 @@ printf "  ${BOLD}Compose${NC}   %s\n" "$COMPOSE_FILE"
 printf "\n"
 printf "  Manage:  cd %s && %s [logs|ps|down|up]\n" "$INSTALL_DIR" "$CCMD"
 if [ "$NF_RELEASE" = "ga" ] && [ "${LINKED:-false}" != "true" ] && [ "${ACTIVATE:-yes}" != "no" ]; then
-  printf "\n  ${YELLOW}Finish linking:${NC} sign in at %s\n" "${VERIFY_URL:-$PORTAL_URL}"
+  printf "\n  ${YELLOW}Finish licensing:${NC} open %s\n" "${ACTIVATE_URL:-$PORTAL_URL/activate}"
+  printf "  then re-run this installer and paste the token.\n"
 fi
 printf "\n"
