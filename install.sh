@@ -8,10 +8,15 @@
 #   NF_DATA_DIR     NF data directory (rootless default: ~/nf/data, root default: /var/nf)
 #   NF_REDIS_DIR    Redis data directory (rootless default: ~/nf/redis, root default: /var/nf-redis)
 #   INSTALL_DIR     Where to write docker-compose.yml (rootless default: ~/nf, root default: /opt/nf)
-#   NF_RELEASE      "ga" or "enterprise" (auto-detected from login command)
-#   NF_USERNAME     Registry username  }  skip the paste prompt when
+#   NF_RELEASE      "ga" (default) or "enterprise"
+#                     ga         → anonymous pull + browser sign-in to link the device
+#                     enterprise → docker login required (paste command or set creds below)
+#   NF_USERNAME     Registry username  }  enterprise only; skip the paste prompt when
 #   NF_PASSWORD     Registry password  }  both are set via env vars
 #   NF_REGISTRY     Registry hostname  }  (also set NF_REGISTRY or NF_RELEASE)
+#   NF_ACTIVATE     "yes" or "no" — GA only; answer the "activate now?" prompt
+#                     non-interactively (yes opens a browser sign-in to pick a free
+#                     demo or an existing license; no leaves the box unlicensed)
 
 COMPOSE_BASE_URL="https://raw.githubusercontent.com/normalframework/nf-sdk/master/compose"
 set -e
@@ -27,6 +32,7 @@ fi
 # ── Config ────────────────────────────────────────────────────────────────────
 NF_TAG="${NF_TAG:-3.10}"
 NF_PORT="${NF_PORT:-8080}"
+NF_REDIS_PORT="${NF_REDIS_PORT:-6379}"
 # Directory defaults are set after rootless detection below
 
 GA_REGISTRY="normal.azurecr.io"
@@ -39,6 +45,15 @@ ok()      { printf "${GREEN}[✓]${NC} %s\n" "$*"; }
 warn()    { printf "${YELLOW}[!]${NC} %s\n" "$*"; }
 die()     { printf "${RED}[✗]${NC} %s\n" "$*" >&2; exit 1; }
 step()    { printf "\n${BOLD}── %s ──${NC}\n" "$*"; }
+
+# Find the first free TCP port starting from $1
+find_free_port() {
+  _p="$1"
+  while ss -tlnp 2>/dev/null | grep -q ":$_p "; do
+    _p=$((_p + 1))
+  done
+  echo "$_p"
+}
 
 # Read from /dev/tty so prompts work when stdin is a pipe (curl | sh)
 ask() {
@@ -62,6 +77,17 @@ ask_secret() {
   eval "$_var=\$_input"
 }
 
+# Open a URL in the user's default browser if we can find a launcher.
+open_browser() {
+  for _b in xdg-open open sensible-browser x-www-browser; do
+    if command -v "$_b" >/dev/null 2>&1; then
+      "$_b" "$1" >/dev/null 2>&1 &
+      return 0
+    fi
+  done
+  return 1
+}
+
 # ── Banner ────────────────────────────────────────────────────────────────────
 printf "${BOLD}"
 cat <<'BANNER'
@@ -82,6 +108,18 @@ printf "${BOLD}Normal Framework Installer${NC} — version %s\n\n" "$NF_TAG"
 
 # ── Prerequisites ─────────────────────────────────────────────────────────────
 step "Checking prerequisites"
+
+# Remap ports if already in use
+_free_nf=$(find_free_port "$NF_PORT")
+if [ "$_free_nf" != "$NF_PORT" ]; then
+  warn "Port $NF_PORT in use, using $_free_nf instead"
+  NF_PORT="$_free_nf"
+fi
+_free_redis=$(find_free_port "$NF_REDIS_PORT")
+if [ "$_free_redis" != "$NF_REDIS_PORT" ]; then
+  warn "Port $NF_REDIS_PORT in use, using $_free_redis for Redis instead"
+  NF_REDIS_PORT="$_free_redis"
+fi
 
 # OS
 OS_ID="unknown"
@@ -233,8 +271,8 @@ else
   NF_REDIS_DIR="${NF_REDIS_DIR:-/var/nf-redis}"
 fi
 
-# ── Registry login ────────────────────────────────────────────────────────────
-step "Registry login"
+# ── Registry ──────────────────────────────────────────────────────────────────
+step "Registry"
 
 # Parse "docker login REGISTRY -u USER -p PASS" into REGISTRY / NF_USERNAME / NF_PASSWORD
 parse_login_cmd() {
@@ -295,46 +333,58 @@ print(cfg.get('auths',{}).get('$_reg',{}).get('auth',''))
 
 REGISTRY="${NF_REGISTRY:-}"
 
-if [ -n "$NF_USERNAME" ] && [ -n "$NF_PASSWORD" ]; then
-  # Env-var path: derive registry from NF_REGISTRY or NF_RELEASE
-  if [ -z "$REGISTRY" ]; then
-    case "${NF_RELEASE:-ga}" in
-      [Ee]nterprise|[Ee]nt) REGISTRY="$ENT_REGISTRY" ;;
-      *) REGISTRY="$GA_REGISTRY" ;;
-    esac
-  fi
-else
-  # Interactive: ask for the full docker login command from the portal
-  printf "\nGet your ${BOLD}docker login${NC} command from the Normal Portal:\n"
-  printf "  1. Open  ${BOLD}%s${NC}\n" "$PORTAL_URL"
-  printf "  2. Log in → ${BOLD}Settings → API Keys${NC}\n"
-  printf "  3. Copy the login command and paste it below\n\n"
-  ask _LOGIN_CMD "Paste docker login command"
-  parse_login_cmd "$_LOGIN_CMD"
-fi
-
-[ -n "$NF_USERNAME" ] || die "Could not determine registry username."
-[ -n "$NF_PASSWORD" ] || die "Could not determine registry password."
-[ -n "$REGISTRY"    ] || die "Could not determine registry from login command."
-
-# Detect GA vs enterprise from the registry hostname
-case "$REGISTRY" in
-  *normalframework.azurecr.io*) NF_RELEASE="enterprise" ;;
-  *normal.azurecr.io*)          NF_RELEASE="ga" ;;
-  *)                            NF_RELEASE="${NF_RELEASE:-ga}" ;;
-esac
-ok "Registry: $REGISTRY ($NF_RELEASE)"
-
-# Skip login if already authenticated with a valid token
-if check_auth "$REGISTRY"; then
-  ok "Already authenticated with $REGISTRY (token valid)"
-else
-  info "Logging in to $REGISTRY..."
-  if printf '%s' "$NF_PASSWORD" \
-      | $SUDO_DCMD $DCMD login --username "$NF_USERNAME" --password-stdin "$REGISTRY"; then
-    ok "Authenticated with $REGISTRY"
+# Decide the release channel. GA (the default) pulls anonymously from the GA registry and
+# links the device with a browser sign-in after startup — no docker login. Enterprise (or
+# any install that supplies credentials) uses the classic docker-login flow.
+if [ -z "$NF_RELEASE" ]; then
+  if [ -n "$NF_USERNAME" ] || [ -n "$NF_PASSWORD" ] || \
+     [ "$REGISTRY" = "$ENT_REGISTRY" ] || echo "$REGISTRY" | grep -q "normalframework"; then
+    NF_RELEASE="enterprise"
   else
-    die "Login failed. Check your credentials and try again."
+    NF_RELEASE="ga"
+  fi
+fi
+case "$NF_RELEASE" in
+  [Ee]nterprise|[Ee]nt) NF_RELEASE="enterprise" ;;
+  *)                    NF_RELEASE="ga" ;;
+esac
+
+if [ "$NF_RELEASE" = "ga" ]; then
+  # ── GA: anonymous pull, browser sign-in after startup ──
+  REGISTRY="${REGISTRY:-$GA_REGISTRY}"
+  ok "GA release — pulling from $REGISTRY (no login required)"
+else
+  # ── Enterprise: docker login required ──
+  if [ -n "$NF_USERNAME" ] && [ -n "$NF_PASSWORD" ]; then
+    # Env-var path: derive registry from NF_REGISTRY or NF_RELEASE
+    [ -n "$REGISTRY" ] || REGISTRY="$ENT_REGISTRY"
+  else
+    # Interactive: ask for the full docker login command from the portal
+    printf "\nGet your ${BOLD}docker login${NC} command from the Normal Portal:\n"
+    printf "  1. Open  ${BOLD}%s${NC}\n" "$PORTAL_URL"
+    printf "  2. Log in → ${BOLD}Settings → Container${NC}\n"
+    printf "  3. Copy the login command and paste it below\n\n"
+    ask _LOGIN_CMD "Paste docker login command"
+    parse_login_cmd "$_LOGIN_CMD"
+    [ -n "$REGISTRY" ] || REGISTRY="$ENT_REGISTRY"
+  fi
+
+  [ -n "$NF_USERNAME" ] || die "Could not determine registry username."
+  [ -n "$NF_PASSWORD" ] || die "Could not determine registry password."
+  [ -n "$REGISTRY"    ] || die "Could not determine registry from login command."
+  ok "Registry: $REGISTRY (enterprise)"
+
+  # Skip login if already authenticated with a valid token
+  if check_auth "$REGISTRY"; then
+    ok "Already authenticated with $REGISTRY (token valid)"
+  else
+    info "Logging in to $REGISTRY..."
+    if printf '%s' "$NF_PASSWORD" \
+        | $SUDO_DCMD $DCMD login --username "$NF_USERNAME" --password-stdin "$REGISTRY"; then
+      ok "Authenticated with $REGISTRY"
+    else
+      die "Login failed. Check your credentials and try again."
+    fi
   fi
 fi
 
@@ -402,6 +452,16 @@ else
   ok "Downloaded compose/$COMPOSE_VARIANT.yml → $COMPOSE_FILE"
 fi
 
+# Compute memory limits from total RAM (redis=33%, nf=50%)
+_mem_kb=$(awk '/MemTotal/ { print $2 }' /proc/meminfo 2>/dev/null || echo 0)
+if [ "$_mem_kb" -gt 0 ] 2>/dev/null; then
+  NF_REDIS_MEM_LIMIT="$(awk "BEGIN { printf \"%dm\", $_mem_kb / 3 / 1024 }")"
+  NF_MEM_LIMIT="$(awk "BEGIN { printf \"%dm\", $_mem_kb / 2 / 1024 }")"
+else
+  NF_REDIS_MEM_LIMIT="1g"
+  NF_MEM_LIMIT="2g"
+fi
+
 # Write .env so docker compose picks up the right values on future runs too
 _env_tmp="$(mktemp)"
 cat >"$_env_tmp" <<EOF
@@ -410,6 +470,9 @@ NF_TAG=${NF_TAG}
 NF_PORT=${NF_PORT}
 NF_DATA_DIR=${NF_DATA_DIR}
 NF_REDIS_DIR=${NF_REDIS_DIR}
+NF_REDIS_PORT=${NF_REDIS_PORT}
+NF_REDIS_MEM_LIMIT=${NF_REDIS_MEM_LIMIT}
+NF_MEM_LIMIT=${NF_MEM_LIMIT}
 EOF
 if [ -w "$INSTALL_DIR" ]; then
   mv "$_env_tmp" "$ENV_FILE"
@@ -461,6 +524,113 @@ if [ "${READY:-false}" != "true" ]; then
   warn "Check logs with: cd $INSTALL_DIR && ${CCMD} logs -f"
 fi
 
+# ── Link this device (GA browser sign-in) ─────────────────────────────────────
+# For GA installs the installer itself acts as the device-authorization client: it reads the
+# box's machine id from the local (no-auth) info endpoint, runs the browser sign-in grant
+# against the portal, then pushes the resulting license to the box over localhost. The box
+# only uses endpoints it already ships (/api/v1/platform/info and /api/v1/platform/license),
+# so this needs no special build.
+#
+# Extract a top-level string field from a JSON body on stdin (camelCase, as emitted by the
+# gRPC-JSON transcoder). Usage: printf '%s' "$json" | _json_str <key>
+_json_str() {
+  grep -o "\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | head -1 \
+    | sed 's/.*:[[:space:]]*"\(.*\)"$/\1/'
+}
+
+if [ "$NF_RELEASE" = "ga" ] && [ "${READY:-false}" = "true" ]; then
+  step "Activate a license"
+
+  # Ask whether to activate now. Set NF_ACTIVATE=yes|no to answer non-interactively.
+  # Choosing yes opens a browser sign-in where you pick a free demo or an existing
+  # license; choosing no leaves the box unlicensed to activate later from the console.
+  ACTIVATE="${NF_ACTIVATE:-}"
+  if [ -z "$ACTIVATE" ]; then
+    if [ -r /dev/tty ]; then
+      ask _ANS "Activate a license now? (opens a browser to sign in) [Y/n]" "Y"
+      case "$_ANS" in [Nn]*) ACTIVATE=no ;; *) ACTIVATE=yes ;; esac
+    else
+      ACTIVATE=yes   # no terminal: proceed and print the URL + code for headless sign-in
+    fi
+  fi
+fi
+
+if [ "$NF_RELEASE" = "ga" ] && [ "${READY:-false}" = "true" ] && [ "${ACTIVATE:-yes}" != "no" ]; then
+  BOX="http://localhost:$NF_PORT"
+
+  # 1. Read the box machine id + version (no auth required).
+  INFO="$(curl -sf "$BOX/api/v1/platform/info" 2>/dev/null || true)"
+  MID="$(printf '%s' "$INFO" | _json_str machineInfo)"
+  BOX_VERSION="$(printf '%s' "$INFO" | _json_str version)"
+  DEVICE_NAME="$(hostname 2>/dev/null || echo "Normal Site")"
+
+  # 2. Start the device-authorization grant on the portal.
+  START_BODY="$(printf '{"mid":"%s","version":"%s","name":"%s"}' "$MID" "$BOX_VERSION" "$DEVICE_NAME")"
+  START="$(curl -sf -X POST "$PORTAL_URL/api/v1/license/device/start" \
+    -H 'Content-Type: application/json' -d "$START_BODY" 2>/dev/null || true)"
+
+  DEVICE_CODE="$(printf '%s' "$START" | _json_str deviceCode)"
+  USER_CODE="$(printf '%s' "$START" | _json_str userCode)"
+  VERIFY_URL="$(printf '%s' "$START" | _json_str verificationUriComplete)"
+
+  if [ -z "$DEVICE_CODE" ]; then
+    warn "Couldn't start device sign-in with the portal."
+    warn "Activate manually from the console at $BOX"
+  else
+    printf "\n  ${BOLD}Sign in to activate your free site:${NC}\n"
+    printf "    URL:  ${BOLD}%s${NC}\n" "$VERIFY_URL"
+    [ -n "$USER_CODE" ] && printf "    Code: ${BOLD}%s${NC}\n" "$USER_CODE"
+    printf "\n"
+    if open_browser "$VERIFY_URL"; then
+      info "Opened your browser to sign in"
+    else
+      warn "Couldn't open a browser here — open the URL above on any device"
+    fi
+
+    # 3. Poll the portal until the user approves, then install the license on the box.
+    printf "Waiting for you to sign in "
+    _waited=0
+    while [ "$_waited" -lt 600 ]; do
+      POLL="$(curl -sf -X POST "$PORTAL_URL/api/v1/license/device/poll" \
+        -H 'Content-Type: application/json' \
+        -d "$(printf '{"deviceCode":"%s"}' "$DEVICE_CODE")" 2>/dev/null || true)"
+      POLL_STATUS="$(printf '%s' "$POLL" | _json_str status)"
+      case "$POLL_STATUS" in
+        *APPROVED*)
+          LICENSE_JWT="$(printf '%s' "$POLL" | _json_str license)"
+          # 4. Install the license on the box (localhost is allowed without auth).
+          if curl -sf -X POST "$BOX/api/v1/platform/license" \
+              -H 'Content-Type: application/json' \
+              -d "$(printf '{"license":"%s"}' "$LICENSE_JWT")" >/dev/null 2>&1; then
+            printf " ${GREEN}linked!${NC}\n"
+            LINKED=true
+          else
+            printf "\n"
+            warn "Signed in, but installing the license on the box failed."
+          fi
+          break
+          ;;
+        *DENIED*|*EXPIRED*)
+          printf "\n"
+          warn "Sign-in was ${POLL_STATUS#DEVICE_PROVISION_STATUS_} — re-run the installer to try again."
+          break
+          ;;
+      esac
+      printf "."
+      sleep 3; _waited=$((_waited + 3))
+    done
+    if [ "${LINKED:-false}" != "true" ] && [ -z "$POLL_STATUS" ]; then
+      printf "\n"
+      warn "Not linked yet — finish signing in at the URL above, then activate from $BOX"
+    fi
+  fi
+fi
+
+if [ "$NF_RELEASE" = "ga" ] && [ "${READY:-false}" = "true" ] && [ "${ACTIVATE:-yes}" = "no" ]; then
+  info "Skipping activation — the box is running unlicensed."
+  info "Activate any time from the console at http://localhost:$NF_PORT"
+fi
+
 # ── Done ──────────────────────────────────────────────────────────────────────
 printf "\n${GREEN}${BOLD}"
 printf "╔══════════════════════════════════════════════╗\n"
@@ -472,7 +642,7 @@ printf "  ${BOLD}Data${NC}      %s\n" "$NF_DATA_DIR"
 printf "  ${BOLD}Compose${NC}   %s\n" "$COMPOSE_FILE"
 printf "\n"
 printf "  Manage:  cd %s && %s [logs|ps|down|up]\n" "$INSTALL_DIR" "$CCMD"
-if [ "$NF_RELEASE" = "ga" ]; then
-  printf "\n  ${YELLOW}GA release:${NC} activate your license at %s\n" "$PORTAL_URL"
+if [ "$NF_RELEASE" = "ga" ] && [ "${LINKED:-false}" != "true" ] && [ "${ACTIVATE:-yes}" != "no" ]; then
+  printf "\n  ${YELLOW}Finish linking:${NC} sign in at %s\n" "${VERIFY_URL:-$PORTAL_URL}"
 fi
 printf "\n"
