@@ -506,7 +506,7 @@ ok "Containers started"
 
 # ── Wait for console ──────────────────────────────────────────────────────────
 step "Waiting for console to come up"
-MAX_WAIT=90
+MAX_WAIT=180
 WAITED=0
 printf "Polling http://localhost:%s " "$NF_PORT"
 while [ "$WAITED" -lt "$MAX_WAIT" ]; do
@@ -540,21 +540,35 @@ _json_str() {
     | sed 's/.*:[[:space:]]*"\(.*\)"$/\1/'
 }
 
-if [ "$NF_RELEASE" = "ga" ] && [ "${READY:-false}" = "true" ]; then
+if [ "$NF_RELEASE" = "ga" ]; then
   step "Activate a license"
+  BOX="http://localhost:$NF_PORT"
 
   # Set NF_ACTIVATE=yes|no to answer non-interactively. "yes" prints a sign-in link
   # (open it on any device) to pick a free demo or an existing license; "no" leaves the
   # box unlicensed to activate later from the console.
   ACTIVATE="${NF_ACTIVATE:-}"
 
+  # Wait for the box API to answer — a fresh first boot can take a couple of minutes, and
+  # activation needs it (to read the machine id and later install the license). This is a
+  # more accurate readiness check than the console poll above.
+  printf "Waiting for the box API "
+  _waited=0; INFO=""
+  while [ "$_waited" -lt 180 ]; do
+    INFO="$(curl -sf "$BOX/api/v1/platform/info" 2>/dev/null || true)"
+    [ -n "$INFO" ] && { printf " ${GREEN}ready!${NC}\n"; break; }
+    printf "."; sleep 3; _waited=$((_waited + 3))
+  done
+  if [ -z "$INFO" ]; then
+    printf "\n"
+    warn "The box API isn't responding yet — re-run the installer once it's up to activate."
+    ACTIVATE=no
+  fi
+
   # Skip activation if the box already reports a license (e.g. this is an upgrade/re-run).
-  if [ -z "$ACTIVATE" ]; then
-    _info="$(curl -sf "http://localhost:$NF_PORT/api/v1/platform/info" 2>/dev/null || true)"
-    if printf '%s' "$_info" | grep -q '"license"[^}]*"name"[[:space:]]*:[[:space:]]*"[^"]'; then
-      info "This site is already licensed — skipping activation."
-      ACTIVATE=no
-    fi
+  if [ -z "$ACTIVATE" ] && printf '%s' "$INFO" | grep -q '"license"[^}]*"name"[[:space:]]*:[[:space:]]*"[^"]'; then
+    info "This site is already licensed — skipping activation."
+    ACTIVATE=no
   fi
 
   if [ -z "$ACTIVATE" ]; then
@@ -567,11 +581,10 @@ if [ "$NF_RELEASE" = "ga" ] && [ "${READY:-false}" = "true" ]; then
   fi
 fi
 
-if [ "$NF_RELEASE" = "ga" ] && [ "${READY:-false}" = "true" ] && [ "${ACTIVATE:-yes}" != "no" ]; then
+if [ "$NF_RELEASE" = "ga" ] && [ "${ACTIVATE:-yes}" != "no" ]; then
   BOX="http://localhost:$NF_PORT"
 
-  # 1. Read the box machine id + version (no auth required).
-  INFO="$(curl -sf "$BOX/api/v1/platform/info" 2>/dev/null || true)"
+  # 1. Machine id + version, from the info already fetched above.
   MID="$(printf '%s' "$INFO" | _json_str machineInfo)"
   BOX_VERSION="$(printf '%s' "$INFO" | _json_str version)"
   DEVICE_NAME="$(hostname 2>/dev/null || echo "Normal Site")"
