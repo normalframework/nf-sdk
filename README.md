@@ -12,62 +12,71 @@ Run this on any Linux machine (Ubuntu 22.04+, Fedora 42+, or any system with Doc
 curl -fsSL https://raw.githubusercontent.com/normalframework/nf-sdk/master/install.sh | sh
 ```
 
-No credentials or config needed. The installer pulls the images, starts Normal Framework,
-and prints a **sign-in link** to license the device:
+No credentials or config needed. The installer prints a **sign-in link** first — signing in
+both authorizes the image download and sets up the site:
 
 ```
-Open this link on any device and sign in to finish:
+── Sign in to Normal ──
+
+  Sign in to Normal to set up this site and authorize the download:
+
     https://portal.normal-online.net/activate?code=ABCD-EFGH
-Waiting for you to activate ....
+
+    (code: ABCD-EFGH)
+
+Waiting for you to sign in ....
 ```
 
 Open the link (on that machine or any other), sign in, choose **Free demo** (a 30-day trial
-with online services) or an existing license, name the site, and click **Activate**. The
-installer detects it automatically and finishes. The management console is then at the
-address it printed (**http://localhost:8080** by default).
+with online services) or an existing license, set the site name + map location, accept the
+terms, and click **Activate**. The installer then pulls the images, starts Normal Framework,
+and licenses the box automatically. The management console is at the address it printed
+(**http://localhost:8080** by default).
 
 ### What the installer does
 
 1. Installs Docker CE if not already present (Ubuntu/Debian via apt, Fedora/RHEL via dnf)
-2. Pulls the `nf-full` and `redis` containers (GA images pull anonymously — no login)
-3. Writes `docker-compose.yml` + `.env` to `/opt/nf` (or `~/nf` for rootless runtimes)
+2. Prints a browser sign-in link; signing in returns short-lived registry pull credentials
+   and records your site details
+3. Pulls the `nf-full` and `redis` containers and writes `docker-compose.yml` + `.env` to
+   `/opt/nf` (or `~/nf` for rootless runtimes)
 4. Starts Normal Framework and waits for the console
-5. Prints a browser sign-in link and licenses the device once you approve
+5. Exchanges the sign-in for a license once the box reports its machine id — no second sign-in
 
-Re-running the installer **upgrades in place** — it reuses the existing ports, re-pulls the
-latest images, and skips activation if the box is already licensed.
+Re-running the installer **upgrades in place** — it reuses the existing ports and cached
+registry login, re-pulls the latest images, and skips licensing if the box is already
+licensed.
 
-### How licensing works (device-authorization grant)
+### How it works (device-authorization grant)
 
 The installer never handles your portal credentials. It asks the portal to start a
 device-authorization grant, prints a short code + link, and long-polls until you approve in
-the browser; the portal then hands back a license the installer applies locally. One
-**free** license is available per user and is **portable** — activating a new box moves it
-and deactivates the old one.
+the browser. Approval returns registry pull credentials so the installer can download the
+images; the same approval is later exchanged for a license bound to the box's machine id.
+One **free** license is available per user and is **portable** — activating a new box moves
+it and deactivates the old one.
 
-Prefer not to activate now? Answer `n` at the prompt (or set `NF_ACTIVATE=no`); the box runs
-unlicensed and you can activate later by re-running the installer.
+Every image pull is gated behind a Normal portal account — there is no anonymous pull. GA
+and Enterprise use the same flow; the portal returns the right registry for your account.
 
-### Enterprise
+### CI / air-gapped installs
 
-Enterprise installs pull from a **private** registry, so they still authenticate with a
-`docker login` command from the portal (or `NF_USERNAME` / `NF_PASSWORD`). Set
-`NF_RELEASE=enterprise` (auto-detected when you supply credentials or an enterprise
-registry). Everything else — the browser activation flow — is the same.
+To install without a browser, set `NF_USERNAME` + `NF_PASSWORD` (registry credentials) in
+the environment. The installer pulls with those and skips the sign-in; the box stays
+unlicensed until you license it from the console (or via `AUTO_PROVISION_KEY`).
 
 ### Environment variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `NF_ACTIVATE` | *(prompts)* | `yes` / `no` — license now (browser sign-in) or leave unlicensed |
-| `NF_RELEASE` | `ga` | `ga` (anonymous pull) or `enterprise` (requires login) |
 | `NF_TAG` | `3.10` | Container image tag to install |
 | `NF_PORT` | `8080` | Console port (auto-remapped if in use) |
 | `NF_DATA_DIR` | `/var/nf` | NF data directory (`~/nf/data` for rootless) |
 | `NF_REDIS_DIR` | `/var/nf-redis` | Redis data directory (`~/nf/redis` for rootless) |
 | `INSTALL_DIR` | `/opt/nf` | Where `docker-compose.yml` is written (`~/nf` for rootless) |
-| `NF_USERNAME` | *(enterprise)* | Registry username from the portal |
-| `NF_PASSWORD` | *(enterprise)* | Registry token from the portal |
+| `NF_USERNAME` | *(none)* | Registry username — escape hatch, skips the browser sign-in |
+| `NF_PASSWORD` | *(none)* | Registry password — escape hatch, skips the browser sign-in |
+| `NF_REGISTRY` | *(from sign-in)* | Registry hostname (only with `NF_USERNAME`/`NF_PASSWORD`) |
 
 ### After install
 
