@@ -35,7 +35,9 @@ NF_REDIS_PORT="${NF_REDIS_PORT:-6379}"
 # Directory defaults are set after rootless detection below
 
 GA_REGISTRY="normal.azurecr.io"
-PORTAL_URL="https://portal.normal-online.net"
+# NF_PORTAL_URL overrides the portal the installer signs in against (e.g. a dev/staging
+# portal). Defaults to production.
+PORTAL_URL="${NF_PORTAL_URL:-https://portal.normal-online.net}"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 info()    { printf "${BLUE}[→]${NC} %s\n" "$*"; }
