@@ -582,6 +582,7 @@ else
       -d "$(printf '{"deviceCode":"%s","mid":"%s","version":"%s"}' "$DEVICE_CODE" "$MID" "$BOX_VERSION")" 2>/dev/null || true)"
     LICENSE_JWT="$(printf '%s' "$COMPLETE" | _json_str license)"
     if [ -n "$LICENSE_JWT" ]; then
+      INSTANCE_UUID="$(printf '%s' "$COMPLETE" | _json_str instanceUuid)"
       if curl -sf -X POST "$BOX/api/v1/platform/license" \
           -H 'Content-Type: application/json' \
           -d "$(printf '{"license":"%s"}' "$LICENSE_JWT")" >/dev/null 2>&1; then
@@ -607,10 +608,17 @@ printf "║   Normal Framework is running!               ║\n"
 printf "╚══════════════════════════════════════════════╝\n"
 printf "${NC}\n"
 printf "  ${BOLD}Console${NC}   http://localhost:%s\n" "$NF_PORT"
+# Remote access: online services expose the console at <instance-uuid>.<tunnel-base>.
+if [ "${LINKED:-false}" = "true" ] && [ -n "${INSTANCE_UUID:-}" ]; then
+  printf "  ${BOLD}Remote${NC}    https://%s.%s\n" "$INSTANCE_UUID" "${NF_TUNNEL_BASE:-normal-online.net}"
+fi
 printf "  ${BOLD}Data${NC}      %s\n" "$NF_DATA_DIR"
 printf "  ${BOLD}Compose${NC}   %s\n" "$COMPOSE_FILE"
 printf "\n"
 printf "  Manage:  cd %s && %s [logs|ps|down|up]\n" "$INSTALL_DIR" "$CCMD"
+if [ "${LINKED:-false}" = "true" ] && [ -n "${INSTANCE_UUID:-}" ]; then
+  printf "\n  ${BLUE}Remote access may take a minute to come online (DNS + tunnel).${NC}\n"
+fi
 if [ "${LINKED:-false}" != "true" ]; then
   printf "\n  ${YELLOW}Not licensed yet:${NC} re-run this installer to finish, or license\n"
   printf "  from the console at http://localhost:%s\n" "$NF_PORT"
