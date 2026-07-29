@@ -8,15 +8,14 @@
 #   NF_DATA_DIR     NF data directory (rootless default: ~/nf/data, root default: /var/nf)
 #   NF_REDIS_DIR    Redis data directory (rootless default: ~/nf/redis, root default: /var/nf-redis)
 #   INSTALL_DIR     Where to write docker-compose.yml (rootless default: ~/nf, root default: /opt/nf)
-#   NF_RELEASE      "ga" (default) or "enterprise"
-#                     ga         → anonymous pull + browser sign-in to link the device
-#                     enterprise → docker login required (paste command or set creds below)
-#   NF_USERNAME     Registry username  }  enterprise only; skip the paste prompt when
-#   NF_PASSWORD     Registry password  }  both are set via env vars
-#   NF_REGISTRY     Registry hostname  }  (also set NF_REGISTRY or NF_RELEASE)
-#   NF_ACTIVATE     "yes" or "no" — GA only; answer the "activate now?" prompt
-#                     non-interactively (yes opens a browser sign-in to pick a free
-#                     demo or an existing license; no leaves the box unlicensed)
+# Every image pull is gated behind a Normal portal account. By default the installer prints
+# a sign-in link: you sign in, set up the site, and the portal hands back registry pull
+# credentials. That same approval licenses the box once it boots — no second sign-in.
+#
+#   NF_USERNAME     Registry username  }  escape hatch for CI / air-gapped installs: set
+#   NF_PASSWORD     Registry password  }  both to skip the browser sign-in and pull with
+#   NF_REGISTRY     Registry hostname  }  these credentials directly (box stays unlicensed
+#                                          until you license it from the console)
 
 COMPOSE_BASE_URL="https://raw.githubusercontent.com/normalframework/nf-sdk/master/compose"
 set -e
@@ -36,7 +35,6 @@ NF_REDIS_PORT="${NF_REDIS_PORT:-6379}"
 # Directory defaults are set after rootless detection below
 
 GA_REGISTRY="normal.azurecr.io"
-ENT_REGISTRY="normalframework.azurecr.io"
 PORTAL_URL="https://portal.normal-online.net"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -45,6 +43,13 @@ ok()      { printf "${GREEN}[✓]${NC} %s\n" "$*"; }
 warn()    { printf "${YELLOW}[!]${NC} %s\n" "$*"; }
 die()     { printf "${RED}[✗]${NC} %s\n" "$*" >&2; exit 1; }
 step()    { printf "\n${BOLD}── %s ──${NC}\n" "$*"; }
+
+# Extract a top-level string field from a JSON body on stdin (camelCase, as emitted by the
+# gRPC-JSON transcoder). Usage: printf '%s' "$json" | _json_str <key>
+_json_str() {
+  grep -o "\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | head -1 \
+    | sed 's/.*:[[:space:]]*"\(.*\)"$/\1/'
+}
 
 # Find the first free TCP port starting from $1
 find_free_port() {
@@ -279,27 +284,6 @@ fi
 # ── Registry ──────────────────────────────────────────────────────────────────
 step "Registry"
 
-# Parse "docker login REGISTRY -u USER -p PASS" into REGISTRY / NF_USERNAME / NF_PASSWORD
-parse_login_cmd() {
-  _raw="$1"
-  _raw="${_raw#sudo }"        # strip optional sudo prefix
-  _raw="${_raw#docker login}" # strip "docker login"
-  _raw="${_raw# }"
-  # shellcheck disable=SC2086
-  set -- $_raw
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      -u|--username)  NF_USERNAME="$2"; shift 2 ;;
-      -p|--password)  NF_PASSWORD="$2"; shift 2 ;;
-      --username=*)   NF_USERNAME="${1#*=}"; shift ;;
-      --password=*)   NF_PASSWORD="${1#*=}"; shift ;;
-      --password-stdin) shift ;;
-      -*)             shift ;;
-      *)              REGISTRY="$1"; shift ;;  # first bare word = registry
-    esac
-  done
-}
-
 # Return 0 if we're already authenticated and the token still works.
 # ACR tokens have a 1-year expiry so a config-file check is usually enough,
 # but we also do a quick /v2/ ping via curl to be sure.
@@ -336,60 +320,84 @@ print(cfg.get('auths',{}).get('$_reg',{}).get('auth',''))
   [ "$_http" = "200" ]
 }
 
+# ── Registry access ───────────────────────────────────────────────────────────
+# Every image pull is gated behind a Normal portal account. There are three ways in, in
+# priority order:
+#   1. NF_USERNAME + NF_PASSWORD in the environment (CI / air-gapped escape hatch).
+#   2. Credentials already cached from a previous run (upgrades reuse them).
+#   3. A browser sign-in (device-authorization grant): the installer prints a link, you
+#      sign in and set up the site, and the portal returns short-lived pull credentials.
+#      The same approval later licenses the box — see "Activate a license" below.
 REGISTRY="${NF_REGISTRY:-}"
+DEVICE_CODE=""   # set by the sign-in path; possession of it licenses the box later
 
-# Decide the release channel. GA (the default) pulls anonymously from the GA registry and
-# links the device with a browser sign-in after startup — no docker login. Enterprise (or
-# any install that supplies credentials) uses the classic docker-login flow.
-if [ -z "$NF_RELEASE" ]; then
-  if [ -n "$NF_USERNAME" ] || [ -n "$NF_PASSWORD" ] || \
-     [ "$REGISTRY" = "$ENT_REGISTRY" ] || echo "$REGISTRY" | grep -q "normalframework"; then
-    NF_RELEASE="enterprise"
-  else
-    NF_RELEASE="ga"
-  fi
-fi
-case "$NF_RELEASE" in
-  [Ee]nterprise|[Ee]nt) NF_RELEASE="enterprise" ;;
-  *)                    NF_RELEASE="ga" ;;
-esac
+# device_sign_in: run the device-authorization grant to (a) mint registry pull credentials
+# and (b) set up the site. Sets DEVICE_CODE, REGISTRY, NF_USERNAME, NF_PASSWORD.
+device_sign_in() {
+  # step 1: start a grant. No machine id yet — the box isn't running.
+  _start="$(curl -sf -X POST "$PORTAL_URL/api/v1/license/device/start" \
+    -H 'Content-Type: application/json' \
+    -d "$(printf '{"version":"%s"}' "$NF_TAG")" 2>/dev/null || true)"
+  DEVICE_CODE="$(printf '%s' "$_start" | _json_str deviceCode)"
+  _user_code="$(printf '%s' "$_start" | _json_str userCode)"
+  _verify_url="$(printf '%s' "$_start" | _json_str verificationUriComplete)"
+  [ -n "$DEVICE_CODE" ] || die "Couldn't reach the sign-in service at $PORTAL_URL. Set NF_USERNAME/NF_PASSWORD to install without a browser."
 
-if [ "$NF_RELEASE" = "ga" ]; then
-  # ── GA: anonymous pull, browser sign-in after startup ──
-  REGISTRY="${REGISTRY:-$GA_REGISTRY}"
-  ok "GA release — pulling from $REGISTRY (no login required)"
+  _name="$(hostname 2>/dev/null || echo 'Normal Site')"
+  _verify_url="${_verify_url}&name=$(printf '%s' "$_name" | sed 's/ /%20/g')"
+  printf "\n  ${BOLD}Sign in to Normal to set up this site and authorize the download:${NC}\n\n"
+  printf "    ${BOLD}${BLUE}%s${NC}\n\n" "$_verify_url"
+  [ -n "$_user_code" ] && printf "    (code: ${BOLD}%s${NC})\n\n" "$_user_code"
+
+  # steps 2/3: poll until you approve in the browser; approval returns pull credentials.
+  printf "Waiting for you to sign in "
+  _waited=0
+  while [ "$_waited" -lt 900 ]; do
+    _poll="$(curl -sf -X POST "$PORTAL_URL/api/v1/license/device/poll" \
+      -H 'Content-Type: application/json' \
+      -d "$(printf '{"deviceCode":"%s"}' "$DEVICE_CODE")" 2>/dev/null || true)"
+    _status="$(printf '%s' "$_poll" | _json_str status)"
+    case "$_status" in
+      *APPROVED*|*COMPLETED*)
+        REGISTRY="$(printf '%s' "$_poll" | _json_str registry)"
+        NF_USERNAME="$(printf '%s' "$_poll" | _json_str dockerUsername)"
+        NF_PASSWORD="$(printf '%s' "$_poll" | _json_str dockerPassword)"
+        printf " ${GREEN}done!${NC}\n"
+        return 0
+        ;;
+      *DENIED*|*EXPIRED*)
+        die "Sign-in ${_status#DEVICE_PROVISION_STATUS_} — re-run the installer."
+        ;;
+    esac
+    printf "."; sleep 3; _waited=$((_waited + 3))
+  done
+  die "Timed out waiting for sign-in — re-run the installer."
+}
+
+if [ -n "$NF_USERNAME" ] && [ -n "$NF_PASSWORD" ]; then
+  # (1) explicit credentials from the environment
+  [ -n "$REGISTRY" ] || REGISTRY="$GA_REGISTRY"
+  info "Using registry credentials from the environment"
+elif [ -n "$REGISTRY" ] && check_auth "$REGISTRY"; then
+  # (2) already authenticated from a previous run (upgrade in place)
+  ok "Already authenticated with $REGISTRY (token valid)"
+  SKIP_LOGIN=true
 else
-  # ── Enterprise: docker login required ──
-  if [ -n "$NF_USERNAME" ] && [ -n "$NF_PASSWORD" ]; then
-    # Env-var path: derive registry from NF_REGISTRY or NF_RELEASE
-    [ -n "$REGISTRY" ] || REGISTRY="$ENT_REGISTRY"
-  else
-    # Interactive: ask for the full docker login command from the portal
-    printf "\nGet your ${BOLD}docker login${NC} command from the Normal Portal:\n"
-    printf "  1. Open  ${BOLD}%s${NC}\n" "$PORTAL_URL"
-    printf "  2. Log in → ${BOLD}Settings → Container${NC}\n"
-    printf "  3. Copy the login command and paste it below\n\n"
-    ask _LOGIN_CMD "Paste docker login command"
-    parse_login_cmd "$_LOGIN_CMD"
-    [ -n "$REGISTRY" ] || REGISTRY="$ENT_REGISTRY"
-  fi
+  # (3) browser sign-in mints pull credentials and sets up the site
+  step "Sign in to Normal"
+  device_sign_in
+fi
 
-  [ -n "$NF_USERNAME" ] || die "Could not determine registry username."
-  [ -n "$NF_PASSWORD" ] || die "Could not determine registry password."
-  [ -n "$REGISTRY"    ] || die "Could not determine registry from login command."
-  ok "Registry: $REGISTRY (enterprise)"
-
-  # Skip login if already authenticated with a valid token
-  if check_auth "$REGISTRY"; then
-    ok "Already authenticated with $REGISTRY (token valid)"
+if [ "${SKIP_LOGIN:-false}" != "true" ]; then
+  [ -n "$REGISTRY"    ] || die "Could not determine the registry."
+  [ -n "$NF_USERNAME" ] || die "Could not determine the registry username."
+  [ -n "$NF_PASSWORD" ] || die "Could not determine the registry password."
+  info "Logging in to $REGISTRY..."
+  if printf '%s' "$NF_PASSWORD" \
+      | $SUDO_DCMD $DCMD login --username "$NF_USERNAME" --password-stdin "$REGISTRY"; then
+    ok "Authenticated with $REGISTRY"
   else
-    info "Logging in to $REGISTRY..."
-    if printf '%s' "$NF_PASSWORD" \
-        | $SUDO_DCMD $DCMD login --username "$NF_USERNAME" --password-stdin "$REGISTRY"; then
-      ok "Authenticated with $REGISTRY"
-    else
-      die "Login failed. Check your credentials and try again."
-    fi
+    die "Registry login failed. Check your credentials and try again."
   fi
 fi
 
@@ -526,126 +534,68 @@ if [ "${READY:-false}" != "true" ]; then
   warn "Check logs with: cd $INSTALL_DIR && ${CCMD} logs -f"
 fi
 
-# ── Link this device (GA browser sign-in) ─────────────────────────────────────
-# For GA installs the installer itself acts as the device-authorization client: it reads the
-# box's machine id from the local (no-auth) info endpoint, runs the browser sign-in grant
-# against the portal, then pushes the resulting license to the box over localhost. The box
-# only uses endpoints it already ships (/api/v1/platform/info and /api/v1/platform/license),
-# so this needs no special build.
-#
-# Extract a top-level string field from a JSON body on stdin (camelCase, as emitted by the
-# gRPC-JSON transcoder). Usage: printf '%s' "$json" | _json_str <key>
-_json_str() {
-  grep -o "\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | head -1 \
-    | sed 's/.*:[[:space:]]*"\(.*\)"$/\1/'
-}
+# ── Activate a license ────────────────────────────────────────────────────────
+# The site was already set up during the sign-in at the start; possession of DEVICE_CODE is
+# the approved capability. Now that the box is running and has a machine id, exchange the
+# device_code for a license (no second sign-in) and install it over localhost. The box uses
+# only endpoints it already ships (/api/v1/platform/info and /api/v1/platform/license).
+step "Activate a license"
+BOX="http://localhost:$NF_PORT"
 
-if [ "$NF_RELEASE" = "ga" ]; then
-  step "Activate a license"
-  BOX="http://localhost:$NF_PORT"
-
-  # Set NF_ACTIVATE=yes|no to answer non-interactively. "yes" prints a sign-in link
-  # (open it on any device) to pick a free demo or an existing license; "no" leaves the
-  # box unlicensed to activate later from the console.
-  ACTIVATE="${NF_ACTIVATE:-}"
-
-  # Wait for the box API to answer — a fresh first boot can take a couple of minutes, and
-  # activation needs it (to read the machine id and later install the license). This is a
-  # more accurate readiness check than the console poll above.
-  printf "Waiting for the box API "
-  _waited=0; INFO=""
-  while [ "$_waited" -lt 180 ]; do
-    INFO="$(curl -sf "$BOX/api/v1/platform/info" 2>/dev/null || true)"
-    [ -n "$INFO" ] && { printf " ${GREEN}ready!${NC}\n"; break; }
-    printf "."; sleep 3; _waited=$((_waited + 3))
-  done
-  if [ -z "$INFO" ]; then
-    printf "\n"
-    warn "The box API isn't responding yet — re-run the installer once it's up to activate."
-    ACTIVATE=no
-  fi
-
-  # Skip activation if the box already reports a license (e.g. this is an upgrade/re-run).
-  if [ -z "$ACTIVATE" ] && printf '%s' "$INFO" | grep -q '"license"[^}]*"name"[[:space:]]*:[[:space:]]*"[^"]'; then
-    info "This site is already licensed — skipping activation."
-    ACTIVATE=no
-  fi
-
-  if [ -z "$ACTIVATE" ]; then
-    if [ -r /dev/tty ]; then
-      ask _ANS "Activate a license now? (sign in from any device) [Y/n]" "Y"
-      case "$_ANS" in [Nn]*) ACTIVATE=no ;; *) ACTIVATE=yes ;; esac
-    else
-      ACTIVATE=yes   # no terminal: proceed and print the URL + code
-    fi
-  fi
+# Wait for the box API to answer — a fresh first boot can take a couple of minutes, and
+# activation needs it (to read the machine id and later install the license). This is a
+# more accurate readiness check than the console poll above.
+printf "Waiting for the box API "
+_waited=0; INFO=""
+while [ "$_waited" -lt 180 ]; do
+  INFO="$(curl -sf "$BOX/api/v1/platform/info" 2>/dev/null || true)"
+  [ -n "$INFO" ] && { printf " ${GREEN}ready!${NC}\n"; break; }
+  printf "."; sleep 3; _waited=$((_waited + 3))
+done
+if [ -z "$INFO" ]; then
+  printf "\n"
+  warn "The box API isn't responding yet — re-run the installer once it's up to license."
 fi
 
-if [ "$NF_RELEASE" = "ga" ] && [ "${ACTIVATE:-yes}" != "no" ]; then
-  BOX="http://localhost:$NF_PORT"
+if printf '%s' "$INFO" | grep -q '"license"[^}]*"name"[[:space:]]*:[[:space:]]*"[^"]'; then
+  # Already licensed (upgrade / re-run) — nothing to do.
+  info "This site is already licensed."
+elif [ -z "$DEVICE_CODE" ]; then
+  # No sign-in happened this run (env-credential or cached-auth path). Nothing to exchange —
+  # the box auto-provisions if AUTO_PROVISION_KEY is set, otherwise license from the console.
+  if [ -n "$INFO" ]; then
+    info "Box is running unlicensed — license it from the console at $BOX"
+  fi
+elif [ -z "$INFO" ]; then
+  warn "Couldn't reach the box to license it — re-run the installer once it's up."
+else
   MID="$(printf '%s' "$INFO" | _json_str machineInfo)"
   BOX_VERSION="$(printf '%s' "$INFO" | _json_str version)"
-  DEVICE_NAME="$(hostname 2>/dev/null || echo "Normal Site")"
 
-  # Ask the portal to start a device-authorization grant. This returns a short code + a
-  # sign-in link; the box gets its license once you approve in the browser.
-  START_BODY="$(printf '{"mid":"%s","version":"%s","name":"%s"}' "$MID" "$BOX_VERSION" "$DEVICE_NAME")"
-  START="$(curl -sf -X POST "$PORTAL_URL/api/v1/license/device/start" \
-    -H 'Content-Type: application/json' -d "$START_BODY" 2>/dev/null || true)"
-
-  DEVICE_CODE="$(printf '%s' "$START" | _json_str deviceCode)"
-  USER_CODE="$(printf '%s' "$START" | _json_str userCode)"
-  VERIFY_URL="$(printf '%s' "$START" | _json_str verificationUriComplete)"
-
-  if [ -z "$DEVICE_CODE" ]; then
-    # First call failed — the portal is unreachable. Fail fast rather than hang.
-    warn "Couldn't reach the activation service at $PORTAL_URL."
-    warn "Re-run the installer to activate later, or license from the console at $BOX."
-  else
-    VERIFY_URL="${VERIFY_URL}&name=$(printf '%s' "$DEVICE_NAME" | sed 's/ /%20/g')"
-    printf "\n"
-    printf "  ${BOLD}Open this link on any device and sign in to finish:${NC}\n\n"
-    printf "    ${BOLD}${BLUE}%s${NC}\n\n" "$VERIFY_URL"
-    [ -n "$USER_CODE" ] && printf "    (code: ${BOLD}%s${NC})\n\n" "$USER_CODE"
-
-    # Long-poll until you approve in the browser, then apply the license locally.
-    printf "Waiting for you to activate "
-    _waited=0
-    while [ "$_waited" -lt 900 ]; do
-      POLL="$(curl -sf -X POST "$PORTAL_URL/api/v1/license/device/poll" \
-        -H 'Content-Type: application/json' \
-        -d "$(printf '{"deviceCode":"%s"}' "$DEVICE_CODE")" 2>/dev/null || true)"
-      POLL_STATUS="$(printf '%s' "$POLL" | _json_str status)"
-      case "$POLL_STATUS" in
-        *APPROVED*)
-          LICENSE_JWT="$(printf '%s' "$POLL" | _json_str license)"
-          if curl -sf -X POST "$BOX/api/v1/platform/license" \
-              -H 'Content-Type: application/json' \
-              -d "$(printf '{"license":"%s"}' "$LICENSE_JWT")" >/dev/null 2>&1; then
-            printf " ${GREEN}licensed!${NC}\n"
-            ok "Your site is activated."
-            LINKED=true
-          else
-            printf "\n"; warn "Approved, but applying the license on the box failed."
-          fi
-          break
-          ;;
-        *DENIED*|*EXPIRED*)
-          printf "\n"; warn "Activation ${POLL_STATUS#DEVICE_PROVISION_STATUS_} — re-run the installer."
-          break
-          ;;
-      esac
-      printf "."; sleep 3; _waited=$((_waited + 3))
-    done
-    if [ "${LINKED:-false}" != "true" ] && [ -z "$POLL_STATUS" ]; then
-      printf "\n"; warn "Timed out — finish at the link above, then re-run the installer."
+  printf "Requesting your license "
+  _waited=0
+  while [ "$_waited" -lt 120 ]; do
+    COMPLETE="$(curl -sf -X POST "$PORTAL_URL/api/v1/license/device/complete" \
+      -H 'Content-Type: application/json' \
+      -d "$(printf '{"deviceCode":"%s","mid":"%s","version":"%s"}' "$DEVICE_CODE" "$MID" "$BOX_VERSION")" 2>/dev/null || true)"
+    LICENSE_JWT="$(printf '%s' "$COMPLETE" | _json_str license)"
+    if [ -n "$LICENSE_JWT" ]; then
+      if curl -sf -X POST "$BOX/api/v1/platform/license" \
+          -H 'Content-Type: application/json' \
+          -d "$(printf '{"license":"%s"}' "$LICENSE_JWT")" >/dev/null 2>&1; then
+        printf " ${GREEN}licensed!${NC}\n"
+        ok "Your site is activated."
+        LINKED=true
+      else
+        printf "\n"; warn "Got a license, but applying it on the box failed."
+      fi
+      break
     fi
+    printf "."; sleep 3; _waited=$((_waited + 3))
+  done
+  if [ "${LINKED:-false}" != "true" ]; then
+    printf "\n"; warn "Couldn't obtain the license yet — re-run the installer to retry."
   fi
-fi
-
-if [ "$NF_RELEASE" = "ga" ] && [ "${READY:-false}" = "true" ] && [ "${ACTIVATE:-yes}" = "no" ]; then
-  info "Skipping activation — the box is running unlicensed."
-  info "Activate any time from the console at http://localhost:$NF_PORT"
 fi
 
 # ── Done ──────────────────────────────────────────────────────────────────────
@@ -659,8 +609,8 @@ printf "  ${BOLD}Data${NC}      %s\n" "$NF_DATA_DIR"
 printf "  ${BOLD}Compose${NC}   %s\n" "$COMPOSE_FILE"
 printf "\n"
 printf "  Manage:  cd %s && %s [logs|ps|down|up]\n" "$INSTALL_DIR" "$CCMD"
-if [ "$NF_RELEASE" = "ga" ] && [ "${LINKED:-false}" != "true" ] && [ "${ACTIVATE:-yes}" != "no" ]; then
-  printf "\n  ${YELLOW}Finish licensing:${NC} open %s\n" "${VERIFY_URL:-$PORTAL_URL/activate}"
-  printf "  then re-run this installer and paste the token.\n"
+if [ "${LINKED:-false}" != "true" ]; then
+  printf "\n  ${YELLOW}Not licensed yet:${NC} re-run this installer to finish, or license\n"
+  printf "  from the console at http://localhost:%s\n" "$NF_PORT"
 fi
 printf "\n"
