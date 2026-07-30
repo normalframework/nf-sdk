@@ -1,7 +1,6 @@
 # Rootless Docker / Podman variant.
 # Volumes use :z so SELinux (Fedora/RHEL) relabels them as container_file_t.
 # Default data paths are under $HOME so no sudo is required.
-version: "2.2"
 services:
 
   nf:

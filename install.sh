@@ -8,10 +8,14 @@
 #   NF_DATA_DIR     NF data directory (rootless default: ~/nf/data, root default: /var/nf)
 #   NF_REDIS_DIR    Redis data directory (rootless default: ~/nf/redis, root default: /var/nf-redis)
 #   INSTALL_DIR     Where to write docker-compose.yml (rootless default: ~/nf, root default: /opt/nf)
-#   NF_RELEASE      "ga" or "enterprise" (auto-detected from login command)
-#   NF_USERNAME     Registry username  }  skip the paste prompt when
-#   NF_PASSWORD     Registry password  }  both are set via env vars
-#   NF_REGISTRY     Registry hostname  }  (also set NF_REGISTRY or NF_RELEASE)
+# Every image pull is gated behind a Normal portal account. By default the installer prints
+# a sign-in link: you sign in, set up the site, and the portal hands back registry pull
+# credentials. That same approval licenses the box once it boots — no second sign-in.
+#
+#   NF_USERNAME     Registry username  }  escape hatch for CI / air-gapped installs: set
+#   NF_PASSWORD     Registry password  }  both to skip the browser sign-in and pull with
+#   NF_REGISTRY     Registry hostname  }  these credentials directly (box stays unlicensed
+#                                          until you license it from the console)
 
 COMPOSE_BASE_URL="https://raw.githubusercontent.com/normalframework/nf-sdk/master/compose"
 set -e
@@ -27,11 +31,13 @@ fi
 # ── Config ────────────────────────────────────────────────────────────────────
 NF_TAG="${NF_TAG:-3.10}"
 NF_PORT="${NF_PORT:-8080}"
+NF_REDIS_PORT="${NF_REDIS_PORT:-6379}"
 # Directory defaults are set after rootless detection below
 
 GA_REGISTRY="normal.azurecr.io"
-ENT_REGISTRY="normalframework.azurecr.io"
-PORTAL_URL="https://portal.normal-online.net"
+# NF_PORTAL_URL overrides the portal the installer signs in against (e.g. a dev/staging
+# portal). Defaults to production.
+PORTAL_URL="${NF_PORTAL_URL:-https://portal.normal-online.net}"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 info()    { printf "${BLUE}[→]${NC} %s\n" "$*"; }
@@ -39,6 +45,22 @@ ok()      { printf "${GREEN}[✓]${NC} %s\n" "$*"; }
 warn()    { printf "${YELLOW}[!]${NC} %s\n" "$*"; }
 die()     { printf "${RED}[✗]${NC} %s\n" "$*" >&2; exit 1; }
 step()    { printf "\n${BOLD}── %s ──${NC}\n" "$*"; }
+
+# Extract a top-level string field from a JSON body on stdin (camelCase, as emitted by the
+# gRPC-JSON transcoder). Usage: printf '%s' "$json" | _json_str <key>
+_json_str() {
+  grep -o "\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | head -1 \
+    | sed 's/.*:[[:space:]]*"\(.*\)"$/\1/'
+}
+
+# Find the first free TCP port starting from $1
+find_free_port() {
+  _p="$1"
+  while ss -tlnp 2>/dev/null | grep -q ":$_p "; do
+    _p=$((_p + 1))
+  done
+  echo "$_p"
+}
 
 # Read from /dev/tty so prompts work when stdin is a pipe (curl | sh)
 ask() {
@@ -82,6 +104,9 @@ printf "${BOLD}Normal Framework Installer${NC} — version %s\n\n" "$NF_TAG"
 
 # ── Prerequisites ─────────────────────────────────────────────────────────────
 step "Checking prerequisites"
+
+# Port selection happens after the install dir is known (below), so a re-run can
+# reuse the existing install's ports instead of remapping onto a second instance.
 
 # OS
 OS_ID="unknown"
@@ -233,29 +258,33 @@ else
   NF_REDIS_DIR="${NF_REDIS_DIR:-/var/nf-redis}"
 fi
 
-# ── Registry login ────────────────────────────────────────────────────────────
-step "Registry login"
+ENV_FILE="$INSTALL_DIR/.env"
 
-# Parse "docker login REGISTRY -u USER -p PASS" into REGISTRY / NF_USERNAME / NF_PASSWORD
-parse_login_cmd() {
-  _raw="$1"
-  _raw="${_raw#sudo }"        # strip optional sudo prefix
-  _raw="${_raw#docker login}" # strip "docker login"
-  _raw="${_raw# }"
-  # shellcheck disable=SC2086
-  set -- $_raw
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      -u|--username)  NF_USERNAME="$2"; shift 2 ;;
-      -p|--password)  NF_PASSWORD="$2"; shift 2 ;;
-      --username=*)   NF_USERNAME="${1#*=}"; shift ;;
-      --password=*)   NF_PASSWORD="${1#*=}"; shift ;;
-      --password-stdin) shift ;;
-      -*)             shift ;;
-      *)              REGISTRY="$1"; shift ;;  # first bare word = registry
-    esac
-  done
+# ── Port selection ────────────────────────────────────────────────────────────
+# On a re-run (existing install) reuse the ports already in .env so we upgrade the
+# same instance in place. On a fresh install, pick free ports if the defaults are taken.
+_read_env_var() {  # $1=var name -> value from an existing (possibly root-owned) .env
+  { $SUDO cat "$ENV_FILE" 2>/dev/null || cat "$ENV_FILE" 2>/dev/null; } \
+    | grep "^$1=" | head -1 | cut -d= -f2-
 }
+if [ -f "$ENV_FILE" ] || { [ -n "$SUDO" ] && $SUDO test -f "$ENV_FILE"; }; then
+  IS_UPGRADE=true
+  _e_nf="$(_read_env_var NF_PORT)";       [ -n "$_e_nf" ] && NF_PORT="$_e_nf"
+  _e_redis="$(_read_env_var NF_REDIS_PORT)"; [ -n "$_e_redis" ] && NF_REDIS_PORT="$_e_redis"
+  info "Existing install at $INSTALL_DIR — upgrading in place (console :$NF_PORT, redis :$NF_REDIS_PORT)"
+else
+  _free_nf=$(find_free_port "$NF_PORT")
+  if [ "$_free_nf" != "$NF_PORT" ]; then
+    warn "Port $NF_PORT in use, using $_free_nf instead"; NF_PORT="$_free_nf"
+  fi
+  _free_redis=$(find_free_port "$NF_REDIS_PORT")
+  if [ "$_free_redis" != "$NF_REDIS_PORT" ]; then
+    warn "Port $NF_REDIS_PORT in use, using $_free_redis for Redis instead"; NF_REDIS_PORT="$_free_redis"
+  fi
+fi
+
+# ── Registry ──────────────────────────────────────────────────────────────────
+step "Registry"
 
 # Return 0 if we're already authenticated and the token still works.
 # ACR tokens have a 1-year expiry so a config-file check is usually enough,
@@ -293,48 +322,84 @@ print(cfg.get('auths',{}).get('$_reg',{}).get('auth',''))
   [ "$_http" = "200" ]
 }
 
+# ── Registry access ───────────────────────────────────────────────────────────
+# Every image pull is gated behind a Normal portal account. There are three ways in, in
+# priority order:
+#   1. NF_USERNAME + NF_PASSWORD in the environment (CI / air-gapped escape hatch).
+#   2. Credentials already cached from a previous run (upgrades reuse them).
+#   3. A browser sign-in (device-authorization grant): the installer prints a link, you
+#      sign in and set up the site, and the portal returns short-lived pull credentials.
+#      The same approval later licenses the box — see "Activate a license" below.
 REGISTRY="${NF_REGISTRY:-}"
+DEVICE_CODE=""   # set by the sign-in path; possession of it licenses the box later
+
+# device_sign_in: run the device-authorization grant to (a) mint registry pull credentials
+# and (b) set up the site. Sets DEVICE_CODE, REGISTRY, NF_USERNAME, NF_PASSWORD.
+device_sign_in() {
+  # step 1: start a grant. No machine id yet — the box isn't running.
+  _start="$(curl -sf -X POST "$PORTAL_URL/api/v1/license/device/start" \
+    -H 'Content-Type: application/json' \
+    -d "$(printf '{"version":"%s"}' "$NF_TAG")" 2>/dev/null || true)"
+  DEVICE_CODE="$(printf '%s' "$_start" | _json_str deviceCode)"
+  _user_code="$(printf '%s' "$_start" | _json_str userCode)"
+  _verify_url="$(printf '%s' "$_start" | _json_str verificationUriComplete)"
+  [ -n "$DEVICE_CODE" ] || die "Couldn't reach the sign-in service at $PORTAL_URL. Set NF_USERNAME/NF_PASSWORD to install without a browser."
+
+  _name="$(hostname 2>/dev/null || echo 'Normal Site')"
+  _verify_url="${_verify_url}&name=$(printf '%s' "$_name" | sed 's/ /%20/g')"
+  printf "\n  ${BOLD}Sign in to Normal to set up this site and authorize the download:${NC}\n\n"
+  printf "    ${BOLD}${BLUE}%s${NC}\n\n" "$_verify_url"
+  [ -n "$_user_code" ] && printf "    (code: ${BOLD}%s${NC})\n\n" "$_user_code"
+
+  # steps 2/3: poll until you approve in the browser; approval returns pull credentials.
+  printf "Waiting for you to sign in "
+  _waited=0
+  while [ "$_waited" -lt 900 ]; do
+    _poll="$(curl -sf -X POST "$PORTAL_URL/api/v1/license/device/poll" \
+      -H 'Content-Type: application/json' \
+      -d "$(printf '{"deviceCode":"%s"}' "$DEVICE_CODE")" 2>/dev/null || true)"
+    _status="$(printf '%s' "$_poll" | _json_str status)"
+    case "$_status" in
+      *APPROVED*|*COMPLETED*)
+        REGISTRY="$(printf '%s' "$_poll" | _json_str registry)"
+        NF_USERNAME="$(printf '%s' "$_poll" | _json_str dockerUsername)"
+        NF_PASSWORD="$(printf '%s' "$_poll" | _json_str dockerPassword)"
+        printf " ${GREEN}done!${NC}\n"
+        return 0
+        ;;
+      *DENIED*|*EXPIRED*)
+        die "Sign-in ${_status#DEVICE_PROVISION_STATUS_} — re-run the installer."
+        ;;
+    esac
+    printf "."; sleep 3; _waited=$((_waited + 3))
+  done
+  die "Timed out waiting for sign-in — re-run the installer."
+}
 
 if [ -n "$NF_USERNAME" ] && [ -n "$NF_PASSWORD" ]; then
-  # Env-var path: derive registry from NF_REGISTRY or NF_RELEASE
-  if [ -z "$REGISTRY" ]; then
-    case "${NF_RELEASE:-ga}" in
-      [Ee]nterprise|[Ee]nt) REGISTRY="$ENT_REGISTRY" ;;
-      *) REGISTRY="$GA_REGISTRY" ;;
-    esac
-  fi
+  # (1) explicit credentials from the environment
+  [ -n "$REGISTRY" ] || REGISTRY="$GA_REGISTRY"
+  info "Using registry credentials from the environment"
+elif [ -n "$REGISTRY" ] && check_auth "$REGISTRY"; then
+  # (2) already authenticated from a previous run (upgrade in place)
+  ok "Already authenticated with $REGISTRY (token valid)"
+  SKIP_LOGIN=true
 else
-  # Interactive: ask for the full docker login command from the portal
-  printf "\nGet your ${BOLD}docker login${NC} command from the Normal Portal:\n"
-  printf "  1. Open  ${BOLD}%s${NC}\n" "$PORTAL_URL"
-  printf "  2. Log in → ${BOLD}Settings → API Keys${NC}\n"
-  printf "  3. Copy the login command and paste it below\n\n"
-  ask _LOGIN_CMD "Paste docker login command"
-  parse_login_cmd "$_LOGIN_CMD"
+  # (3) browser sign-in mints pull credentials and sets up the site
+  step "Sign in to Normal"
+  device_sign_in
 fi
 
-[ -n "$NF_USERNAME" ] || die "Could not determine registry username."
-[ -n "$NF_PASSWORD" ] || die "Could not determine registry password."
-[ -n "$REGISTRY"    ] || die "Could not determine registry from login command."
-
-# Detect GA vs enterprise from the registry hostname
-case "$REGISTRY" in
-  *normalframework.azurecr.io*) NF_RELEASE="enterprise" ;;
-  *normal.azurecr.io*)          NF_RELEASE="ga" ;;
-  *)                            NF_RELEASE="${NF_RELEASE:-ga}" ;;
-esac
-ok "Registry: $REGISTRY ($NF_RELEASE)"
-
-# Skip login if already authenticated with a valid token
-if check_auth "$REGISTRY"; then
-  ok "Already authenticated with $REGISTRY (token valid)"
-else
+if [ "${SKIP_LOGIN:-false}" != "true" ]; then
+  [ -n "$REGISTRY"    ] || die "Could not determine the registry."
+  [ -n "$NF_USERNAME" ] || die "Could not determine the registry username."
+  [ -n "$NF_PASSWORD" ] || die "Could not determine the registry password."
   info "Logging in to $REGISTRY..."
   if printf '%s' "$NF_PASSWORD" \
       | $SUDO_DCMD $DCMD login --username "$NF_USERNAME" --password-stdin "$REGISTRY"; then
     ok "Authenticated with $REGISTRY"
   else
-    die "Login failed. Check your credentials and try again."
+    die "Registry login failed. Check your credentials and try again."
   fi
 fi
 
@@ -377,7 +442,6 @@ fi
 step "Setting up docker-compose.yml"
 
 COMPOSE_FILE="$INSTALL_DIR/docker-compose.yml"
-ENV_FILE="$INSTALL_DIR/.env"
 
 if [ "$ROOTLESS" = "true" ]; then
   COMPOSE_VARIANT="linux-rootless"
@@ -385,21 +449,29 @@ else
   COMPOSE_VARIANT="linux"
 fi
 
-if [ -f "$COMPOSE_FILE" ]; then
-  warn "docker-compose.yml already exists at $COMPOSE_FILE — skipping"
-  warn "Delete it and re-run to pull a fresh copy"
+# Always fetch the current compose. It's a parameterized template driven entirely by
+# .env, so overwriting is safe and ensures re-runs/upgrades pick up compose fixes
+# instead of keeping a stale copy.
+info "Downloading compose/$COMPOSE_VARIANT.yml..."
+_tmp="$(mktemp)"
+curl -fsSL "$COMPOSE_BASE_URL/$COMPOSE_VARIANT.yml" -o "$_tmp" \
+  || die "Failed to download compose file from $COMPOSE_BASE_URL/$COMPOSE_VARIANT.yml"
+if [ -w "$INSTALL_DIR" ]; then
+  mv "$_tmp" "$COMPOSE_FILE"
 else
-  info "Downloading compose/$COMPOSE_VARIANT.yml..."
-  _tmp="$(mktemp)"
-  curl -fsSL "$COMPOSE_BASE_URL/$COMPOSE_VARIANT.yml" -o "$_tmp" \
-    || die "Failed to download compose file from $COMPOSE_BASE_URL/$COMPOSE_VARIANT.yml"
-  if [ -w "$INSTALL_DIR" ]; then
-    mv "$_tmp" "$COMPOSE_FILE"
-  else
-    $SUDO cp "$_tmp" "$COMPOSE_FILE"
-    rm -f "$_tmp"
-  fi
-  ok "Downloaded compose/$COMPOSE_VARIANT.yml → $COMPOSE_FILE"
+  $SUDO cp "$_tmp" "$COMPOSE_FILE"
+  rm -f "$_tmp"
+fi
+ok "Downloaded compose/$COMPOSE_VARIANT.yml → $COMPOSE_FILE"
+
+# Compute memory limits from total RAM (redis=33%, nf=50%)
+_mem_kb=$(awk '/MemTotal/ { print $2 }' /proc/meminfo 2>/dev/null || echo 0)
+if [ "$_mem_kb" -gt 0 ] 2>/dev/null; then
+  NF_REDIS_MEM_LIMIT="$(awk "BEGIN { printf \"%dm\", $_mem_kb / 3 / 1024 }")"
+  NF_MEM_LIMIT="$(awk "BEGIN { printf \"%dm\", $_mem_kb / 2 / 1024 }")"
+else
+  NF_REDIS_MEM_LIMIT="1g"
+  NF_MEM_LIMIT="2g"
 fi
 
 # Write .env so docker compose picks up the right values on future runs too
@@ -410,6 +482,9 @@ NF_TAG=${NF_TAG}
 NF_PORT=${NF_PORT}
 NF_DATA_DIR=${NF_DATA_DIR}
 NF_REDIS_DIR=${NF_REDIS_DIR}
+NF_REDIS_PORT=${NF_REDIS_PORT}
+NF_REDIS_MEM_LIMIT=${NF_REDIS_MEM_LIMIT}
+NF_MEM_LIMIT=${NF_MEM_LIMIT}
 EOF
 if [ -w "$INSTALL_DIR" ]; then
   mv "$_env_tmp" "$ENV_FILE"
@@ -441,7 +516,7 @@ ok "Containers started"
 
 # ── Wait for console ──────────────────────────────────────────────────────────
 step "Waiting for console to come up"
-MAX_WAIT=90
+MAX_WAIT=180
 WAITED=0
 printf "Polling http://localhost:%s " "$NF_PORT"
 while [ "$WAITED" -lt "$MAX_WAIT" ]; do
@@ -461,6 +536,71 @@ if [ "${READY:-false}" != "true" ]; then
   warn "Check logs with: cd $INSTALL_DIR && ${CCMD} logs -f"
 fi
 
+# ── Activate a license ────────────────────────────────────────────────────────
+# The site was already set up during the sign-in at the start; possession of DEVICE_CODE is
+# the approved capability. Now that the box is running and has a machine id, exchange the
+# device_code for a license (no second sign-in) and install it over localhost. The box uses
+# only endpoints it already ships (/api/v1/platform/info and /api/v1/platform/license).
+step "Activate a license"
+BOX="http://localhost:$NF_PORT"
+
+# Wait for the box API to answer — a fresh first boot can take a couple of minutes, and
+# activation needs it (to read the machine id and later install the license). This is a
+# more accurate readiness check than the console poll above.
+printf "Waiting for the box API "
+_waited=0; INFO=""
+while [ "$_waited" -lt 180 ]; do
+  INFO="$(curl -sf "$BOX/api/v1/platform/info" 2>/dev/null || true)"
+  [ -n "$INFO" ] && { printf " ${GREEN}ready!${NC}\n"; break; }
+  printf "."; sleep 3; _waited=$((_waited + 3))
+done
+if [ -z "$INFO" ]; then
+  printf "\n"
+  warn "The box API isn't responding yet — re-run the installer once it's up to license."
+fi
+
+if printf '%s' "$INFO" | grep -q '"license"[^}]*"name"[[:space:]]*:[[:space:]]*"[^"]'; then
+  # Already licensed (upgrade / re-run) — nothing to do.
+  info "This site is already licensed."
+elif [ -z "$DEVICE_CODE" ]; then
+  # No sign-in happened this run (env-credential or cached-auth path). Nothing to exchange —
+  # the box auto-provisions if AUTO_PROVISION_KEY is set, otherwise license from the console.
+  if [ -n "$INFO" ]; then
+    info "Box is running unlicensed — license it from the console at $BOX"
+  fi
+elif [ -z "$INFO" ]; then
+  warn "Couldn't reach the box to license it — re-run the installer once it's up."
+else
+  MID="$(printf '%s' "$INFO" | _json_str machineInfo)"
+  BOX_VERSION="$(printf '%s' "$INFO" | _json_str version)"
+
+  printf "Requesting your license "
+  _waited=0
+  while [ "$_waited" -lt 120 ]; do
+    COMPLETE="$(curl -sf -X POST "$PORTAL_URL/api/v1/license/device/complete" \
+      -H 'Content-Type: application/json' \
+      -d "$(printf '{"deviceCode":"%s","mid":"%s","version":"%s"}' "$DEVICE_CODE" "$MID" "$BOX_VERSION")" 2>/dev/null || true)"
+    LICENSE_JWT="$(printf '%s' "$COMPLETE" | _json_str license)"
+    if [ -n "$LICENSE_JWT" ]; then
+      INSTANCE_UUID="$(printf '%s' "$COMPLETE" | _json_str instanceUuid)"
+      if curl -sf -X POST "$BOX/api/v1/platform/license" \
+          -H 'Content-Type: application/json' \
+          -d "$(printf '{"license":"%s"}' "$LICENSE_JWT")" >/dev/null 2>&1; then
+        printf " ${GREEN}licensed!${NC}\n"
+        ok "Your site is activated."
+        LINKED=true
+      else
+        printf "\n"; warn "Got a license, but applying it on the box failed."
+      fi
+      break
+    fi
+    printf "."; sleep 3; _waited=$((_waited + 3))
+  done
+  if [ "${LINKED:-false}" != "true" ]; then
+    printf "\n"; warn "Couldn't obtain the license yet — re-run the installer to retry."
+  fi
+fi
+
 # ── Done ──────────────────────────────────────────────────────────────────────
 printf "\n${GREEN}${BOLD}"
 printf "╔══════════════════════════════════════════════╗\n"
@@ -468,11 +608,19 @@ printf "║   Normal Framework is running!               ║\n"
 printf "╚══════════════════════════════════════════════╝\n"
 printf "${NC}\n"
 printf "  ${BOLD}Console${NC}   http://localhost:%s\n" "$NF_PORT"
+# Remote access: online services expose the console at <instance-uuid>.<tunnel-base>.
+if [ "${LINKED:-false}" = "true" ] && [ -n "${INSTANCE_UUID:-}" ]; then
+  printf "  ${BOLD}Remote${NC}    https://%s.%s\n" "$INSTANCE_UUID" "${NF_TUNNEL_BASE:-normal-online.net}"
+fi
 printf "  ${BOLD}Data${NC}      %s\n" "$NF_DATA_DIR"
 printf "  ${BOLD}Compose${NC}   %s\n" "$COMPOSE_FILE"
 printf "\n"
 printf "  Manage:  cd %s && %s [logs|ps|down|up]\n" "$INSTALL_DIR" "$CCMD"
-if [ "$NF_RELEASE" = "ga" ]; then
-  printf "\n  ${YELLOW}GA release:${NC} activate your license at %s\n" "$PORTAL_URL"
+if [ "${LINKED:-false}" = "true" ] && [ -n "${INSTANCE_UUID:-}" ]; then
+  printf "\n  ${BLUE}Remote access may take a minute to come online (DNS + tunnel).${NC}\n"
+fi
+if [ "${LINKED:-false}" != "true" ]; then
+  printf "\n  ${YELLOW}Not licensed yet:${NC} re-run this installer to finish, or license\n"
+  printf "  from the console at http://localhost:%s\n" "$NF_PORT"
 fi
 printf "\n"
