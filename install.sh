@@ -8,14 +8,14 @@
 #   NF_DATA_DIR     NF data directory (rootless default: ~/nf/data, root default: /var/nf)
 #   NF_REDIS_DIR    Redis data directory (rootless default: ~/nf/redis, root default: /var/nf-redis)
 #   INSTALL_DIR     Where to write docker-compose.yml (rootless default: ~/nf, root default: /opt/nf)
-# Every image pull is gated behind a Normal portal account. By default the installer prints
-# a sign-in link: you sign in, set up the site, and the portal hands back registry pull
-# credentials. That same approval licenses the box once it boots — no second sign-in.
+# By default the installer prints a sign-in link: you sign in and set up the site, and that
+# same approval licenses the box once it boots — no second sign-in. GA images pull
+# anonymously, so there's no registry login in that path.
 #
-#   NF_USERNAME     Registry username  }  escape hatch for CI / air-gapped installs: set
-#   NF_PASSWORD     Registry password  }  both to skip the browser sign-in and pull with
-#   NF_REGISTRY     Registry hostname  }  these credentials directly (box stays unlicensed
-#                                          until you license it from the console)
+#   NF_USERNAME     Registry username  }  private/enterprise registry, or an air-gapped /
+#   NF_PASSWORD     Registry password  }  CI install: set these to skip the browser sign-in
+#   NF_REGISTRY     Registry hostname  }  and pull directly (box stays unlicensed until you
+#                                          license it from the console)
 
 COMPOSE_BASE_URL="https://raw.githubusercontent.com/normalframework/nf-sdk/master/compose"
 set -e
@@ -323,18 +323,20 @@ print(cfg.get('auths',{}).get('$_reg',{}).get('auth',''))
 }
 
 # ── Registry access ───────────────────────────────────────────────────────────
-# Every image pull is gated behind a Normal portal account. There are three ways in, in
-# priority order:
-#   1. NF_USERNAME + NF_PASSWORD in the environment (CI / air-gapped escape hatch).
+# GA images ($GA_REGISTRY) pull anonymously — no registry login. What the browser sign-in
+# buys you is the site setup and the license, not the download. Three ways in, in priority
+# order:
+#   1. NF_USERNAME + NF_PASSWORD in the environment (private/enterprise registry, CI).
 #   2. Credentials already cached from a previous run (upgrades reuse them).
 #   3. A browser sign-in (device-authorization grant): the installer prints a link, you
-#      sign in and set up the site, and the portal returns short-lived pull credentials.
-#      The same approval later licenses the box — see "Activate a license" below.
+#      sign in and set up the site, and that same approval licenses the box once it boots
+#      — see "Activate a license" below. Enterprise tenants also get pull credentials back;
+#      GA tenants get none and pull anonymously.
 REGISTRY="${NF_REGISTRY:-}"
 DEVICE_CODE=""   # set by the sign-in path; possession of it licenses the box later
 
-# device_sign_in: run the device-authorization grant to (a) mint registry pull credentials
-# and (b) set up the site. Sets DEVICE_CODE, REGISTRY, NF_USERNAME, NF_PASSWORD.
+# device_sign_in: run the device-authorization grant to set up the site (and, for enterprise
+# tenants, mint pull credentials). Sets DEVICE_CODE, REGISTRY, NF_USERNAME, NF_PASSWORD.
 device_sign_in() {
   # step 1: start a grant. No machine id yet — the box isn't running.
   _start="$(curl -sf -X POST "$PORTAL_URL/api/v1/license/device/start" \
@@ -351,7 +353,8 @@ device_sign_in() {
   printf "    ${BOLD}${BLUE}%s${NC}\n\n" "$_verify_url"
   [ -n "$_user_code" ] && printf "    (code: ${BOLD}%s${NC})\n\n" "$_user_code"
 
-  # steps 2/3: poll until you approve in the browser; approval returns pull credentials.
+  # steps 2/3: poll until you approve in the browser. Approval returns pull credentials for
+  # enterprise tenants; for GA it returns none and the images pull anonymously.
   printf "Waiting for you to sign in "
   _waited=0
   while [ "$_waited" -lt 900 ]; do
@@ -385,9 +388,15 @@ elif [ -n "$REGISTRY" ] && check_auth "$REGISTRY"; then
   ok "Already authenticated with $REGISTRY (token valid)"
   SKIP_LOGIN=true
 else
-  # (3) browser sign-in mints pull credentials and sets up the site
+  # (3) browser sign-in sets up the site; pull credentials only come back for enterprise
   step "Sign in to Normal"
   device_sign_in
+  if [ -z "$NF_USERNAME" ] || [ -z "$NF_PASSWORD" ]; then
+    # GA: nothing to log in with, and nothing to log in for.
+    [ -n "$REGISTRY" ] || REGISTRY="$GA_REGISTRY"
+    info "Pulling from $REGISTRY (no registry login needed)"
+    SKIP_LOGIN=true
+  fi
 fi
 
 if [ "${SKIP_LOGIN:-false}" != "true" ]; then
