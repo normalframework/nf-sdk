@@ -474,11 +474,22 @@ func insertData(topic []string, msg *sparkplug.Payload) {
 		Uint64("seq", *msg.Seq).
 		Msg("DDATA: Inserting Data")
 
+	var unmappable []*sparkplug.Payload_Metric
+
+	// INSERT...SELECT inserts zero rows (instead of violating the not-null
+	// constraint) when the metric_alias lookup misses, so one unmappable
+	// metric can no longer roll back an entire batch of good data.
 	const insertStatement = `
-INSERT INTO metrics (metric_id, time, value) VALUES (
- (SELECT id FROM metadata WHERE group_name = $1 AND
-   node_name = $2 AND device_name = $3 AND metric_alias = $4), to_timestamp($5), $6)
+INSERT INTO metrics (metric_id, time, value)
+SELECT id, to_timestamp($5), $6
+FROM metadata
+WHERE group_name = $1 AND node_name = $2 AND device_name = $3 AND metric_alias = $4
 ON CONFLICT (metric_id, time) DO NOTHING`
+
+	// queued holds the metrics we actually queue, in queue order, so we can
+	// map per-statement Exec results back to metrics.
+	queued := make([]*sparkplug.Payload_Metric, 0, len(msg.Metrics))
+
 	err := pool.BeginFunc(ctx, func(tx pgx.Tx) error {
 		b := &pgx.Batch{}
 		inserts := 0
@@ -515,15 +526,32 @@ DO UPDATE SET lgsn = $3`, group_id, node_id, *msg.Seq)
 					makeScalar(metric),
 				)
 				inserts++
+				queued = append(queued, metric)
 			}
 		}
 
 		batchResults := tx.SendBatch(ctx, b)
 		for i := 0; i < inserts; i++ {
-			_, err := batchResults.Exec()
+			tag, err := batchResults.Exec()
 			if err != nil {
 				batchResults.Close()
 				return err
+			}
+			// First queued statement (when GOOD) is the lgsn upsert;
+			// skip it when mapping results back to metrics.
+			if state.state == STATE_GOOD && i == 0 {
+				continue
+			}
+			metricIdx := i
+			if state.state == STATE_GOOD {
+				metricIdx--
+			}
+			// RowsAffected()==0 means the alias lookup missed (no
+			// metadata row) or the row already existed (conflict).
+			// Spool it so a later replay can recover it once the
+			// device re-births; conflicts replay harmlessly.
+			if tag.RowsAffected() == 0 && metricIdx < len(queued) {
+				unmappable = append(unmappable, queued[metricIdx])
 			}
 		}
 
@@ -541,6 +569,15 @@ DO UPDATE SET lgsn = $3`, group_id, node_id, *msg.Seq)
 	} else {
 		if state.state == STATE_GOOD && msg.Seq != nil {
 			state.lgsn = *msg.Seq
+		}
+		if len(unmappable) > 0 {
+			log.Info().
+				Str("node_id", node_id).
+				Str("device_id", device_id).
+				Int("unmappable", len(unmappable)).
+				Int("inserted", len(queued)-len(unmappable)).
+				Msg("DDATA: partial insert, spooling unmappable metrics to recovery log")
+			logAllMetrics(node_id, device_id, unmappable, false)
 		}
 		logAllMetrics(node_id, device_id, msg.Metrics, true)
 	}
@@ -810,6 +847,12 @@ func trackVersions(group_id string, node_id string) {
 	// retry-request loop that wipes alias maps and generates .recovery files
 	// when a node cannot fulfill the requested sequence number.
 	maxRecoveryAttempts := getEnvInt("MAX_RECOVERY_ATTEMPTS", 5)
+	// After this many consecutive RECOVERING checks with no hdata received,
+	// give up waiting for backfill and mark the node GOOD (accepting the
+	// gap). This is the escape hatch for a node live-locked in RECOVERING:
+	// transient insert failures can keep re-poking state=RECOVERING before
+	// the DESYNCED branch (and its give-up path) ever runs. 6 checks ≈ 30m.
+	recoveringGiveupChecks := getEnvInt("RECOVERING_GIVEUP_CHECKS", 6)
 
 	nodes_mu.Lock()
 	state := nodes[node_id]
@@ -823,6 +866,7 @@ func trackVersions(group_id string, node_id string) {
 		Msg("Loaded LGSN from database")
 
 	recoveryAttempts := 0
+	recoveringNoHdata := 0
 	for {
 		log.Info().
 			Str("node_id", node_id).
@@ -860,7 +904,21 @@ func trackVersions(group_id string, node_id string) {
 			}
 		case STATE_RECOVERING:
 			if !state.epoch_hdata_received {
-				state.state = STATE_DESYNCED
+				recoveringNoHdata++
+				if recoveringGiveupChecks > 0 && recoveringNoHdata >= recoveringGiveupChecks {
+					log.Warn().
+						Str("node_id", node_id).
+						Int("checks", recoveringNoHdata).
+						Msg("No historical data after repeated recovery checks; marking node GOOD (accepting gap)")
+					state.state = STATE_GOOD
+					state.recovery_id = ""
+					recoveryAttempts = 0
+					recoveringNoHdata = 0
+				} else {
+					state.state = STATE_DESYNCED
+				}
+			} else {
+				recoveringNoHdata = 0
 			}
 		case STATE_GOOD:
 			// Only reset on full recovery (NDATA UUID match → STATE_GOOD).
@@ -868,6 +926,7 @@ func trackVersions(group_id string, node_id string) {
 			// that keeps bouncing DESYNCED→RECOVERING with only heartbeat
 			// traffic would otherwise never exhaust the limit.
 			recoveryAttempts = 0
+			recoveringNoHdata = 0
 		}
 		state.epoch_hdata_received = false
 		time.Sleep(TRACK_VERSION_EPOCH)
