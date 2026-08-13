@@ -29,8 +29,10 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -95,6 +97,58 @@ func applyDDL(ctx context.Context) error {
 func sp(s string) *string   { return &s }
 func u64(n uint64) *uint64  { return &n }
 func boolp(b bool) *bool    { return &b }
+
+// ---- WAL test helpers ----
+
+// findSegment returns the single WAL segment file for a node/device in the
+// test DATA_DIR.
+func findSegment(t *testing.T, nodeID, deviceID string) string {
+	t.Helper()
+	dir := filepath.Join(DATA_DIR, SPARKPLUG_GROUP_ID, nodeID, deviceID)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read WAL dir: %v", err)
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			return filepath.Join(dir, e.Name())
+		}
+	}
+	t.Fatalf("no WAL segment found in %s", dir)
+	return ""
+}
+
+// readSegment parses a WAL segment into records.
+func readSegment(t *testing.T, path string) []record {
+	t.Helper()
+	f, err := os.Open(filepath.Clean(path))
+	if err != nil {
+		t.Fatalf("open segment: %v", err)
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		t.Fatalf("stat segment: %v", err)
+	}
+	var tmp record
+	data := make([]record, info.Size()/int64(binary.Size(tmp)))
+	if err := binary.Read(f, binary.LittleEndian, &data); err != nil {
+		t.Fatalf("read segment: %v", err)
+	}
+	return data
+}
+
+func TestBackoffFor(t *testing.T) {
+	if d := backoffFor(1); d != 30*time.Second {
+		t.Errorf("backoffFor(1) = %v, want 30s", d)
+	}
+	if d := backoffFor(2); d != time.Minute {
+		t.Errorf("backoffFor(2) = %v, want 1m", d)
+	}
+	if d := backoffFor(20); d != time.Hour {
+		t.Errorf("backoffFor(20) = %v, want capped 1h", d)
+	}
+}
 
 // ---- tests ----
 
@@ -259,6 +313,127 @@ func TestHistorian(t *testing.T) {
 	})
 
 	// ------------------------------------------------------------------
+	// DDATA with one unmappable alias — the rest of the batch must
+	// still land (no whole-batch rollback), state must NOT be poked
+	// to RECOVERING, and the unmappable metric must be spooled to the
+	// WAL as an alias-encoded record.
+	// ------------------------------------------------------------------
+	t.Run("DDATA partial insert on unmappable metric", func(t *testing.T) {
+		// +2s: insertData stores to_timestamp(ms/1000) — same-second
+		// timestamps would ON CONFLICT with the earlier DDATA subtest.
+		ts := uint64(time.Now().UnixMilli()) + 2000
+		seq := uint64(3)
+		payload := &sparkplug.Payload{
+			Timestamp: u64(ts),
+			Seq:       &seq,
+			Metrics: []*sparkplug.Payload_Metric{
+				{
+					Alias:     u64(1),
+					Timestamp: u64(ts),
+					Value:     &sparkplug.Payload_Metric_DoubleValue{DoubleValue: 24.0},
+				},
+				{
+					Alias:     u64(99), // not registered by any DBIRTH
+					Timestamp: u64(ts),
+					Value:     &sparkplug.Payload_Metric_DoubleValue{DoubleValue: 101.3},
+				},
+			},
+		}
+
+		insertData(topic("DDATA"), payload)
+
+		ctx := context.Background()
+		var count int
+		if err := pool.QueryRow(ctx,
+			`SELECT COUNT(*) FROM metrics m
+			 JOIN metadata md ON m.metric_id = md.id
+			 WHERE md.node_name = $1 AND md.device_name = $2 AND md.metric_name = 'temperature'`,
+			nodeID, deviceID,
+		).Scan(&count); err != nil {
+			t.Fatalf("query metrics: %v", err)
+		}
+		// 1 row from this DDATA + 1 from the earlier DDATA subtest.
+		if count != 2 {
+			t.Errorf("expected 2 temperature rows (good metric must land), got %d", count)
+		}
+
+		// State must remain GOOD — an unmappable metric is not a
+		// recovery event.
+		nodes_mu.Lock()
+		st := nodes[nodeID].state
+		nodes_mu.Unlock()
+		if st != STATE_GOOD {
+			t.Errorf("expected state STATE_GOOD after partial insert, got %d", st)
+		}
+
+		// The unmappable metric must be spooled alias-encoded in the WAL.
+		seg := findSegment(t, nodeID, deviceID)
+		recs := readSegment(t, seg)
+		if len(recs) == 0 {
+			t.Fatal("expected WAL segment with spooled records, got none")
+		}
+		found := false
+		for _, r := range recs {
+			if recordName(r) == "!alias:99" {
+				found = true
+				if r.Val != 101.3 {
+					t.Errorf("alias record value: expected 101.3, got %v", r.Val)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("no !alias:99 record in WAL segment (%d records)", len(recs))
+		}
+
+		// Replay before the alias is registered must report unresolved
+		// (transient) so the segment is kept.
+		if err := insertRecoveryData(nodeID, deviceID, recs); err == nil {
+			t.Error("expected errUnresolved replaying before alias registration, got nil")
+		}
+	})
+
+	// ------------------------------------------------------------------
+	// WAL alias-encoded replay — once the device re-births and the
+	// alias is registered, the spooled record must land.
+	// ------------------------------------------------------------------
+	t.Run("WAL alias replay after re-birth", func(t *testing.T) {
+		now := uint64(time.Now().UnixMilli())
+		payload := &sparkplug.Payload{
+			Timestamp: u64(now),
+			Seq:       u64(4),
+			Metrics: []*sparkplug.Payload_Metric{
+				{
+					Name:      sp("pressure"),
+					Alias:     u64(99),
+					Timestamp: u64(now),
+					Value:     &sparkplug.Payload_Metric_DoubleValue{DoubleValue: 0},
+				},
+			},
+		}
+		updateAliases(topic("DBIRTH"), payload)
+
+		seg := findSegment(t, nodeID, deviceID)
+		recs := readSegment(t, seg)
+		if err := insertRecoveryData(nodeID, deviceID, recs); err != nil {
+			t.Fatalf("replay after re-birth: %v", err)
+		}
+
+		ctx := context.Background()
+		var val float64
+		if err := pool.QueryRow(ctx,
+			`SELECT m.value FROM metrics m
+			 JOIN metadata md ON m.metric_id = md.id
+			 WHERE md.node_name = $1 AND md.device_name = $2 AND md.metric_name = 'pressure'`,
+			nodeID, deviceID,
+		).Scan(&val); err != nil {
+			t.Fatalf("query replayed metric: %v", err)
+		}
+		if val != 101.3 {
+			t.Errorf("expected replayed value 101.3, got %v", val)
+		}
+	})
+
+	// ------------------------------------------------------------------
 	// NDEATH — aliases are invalidated in the database
 	// ------------------------------------------------------------------
 	t.Run("NDEATH invalidates aliases", func(t *testing.T) {
@@ -273,8 +448,8 @@ func TestHistorian(t *testing.T) {
 		).Scan(&nullCount); err != nil {
 			t.Fatalf("query metadata: %v", err)
 		}
-		if nullCount != 2 {
-			t.Errorf("expected 2 rows with null alias after NDEATH, got %d", nullCount)
+		if nullCount != 3 {
+			t.Errorf("expected 3 rows with null alias after NDEATH, got %d", nullCount)
 		}
 	})
 }
