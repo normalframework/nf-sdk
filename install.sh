@@ -5,9 +5,12 @@
 # Environment variables (all optional):
 #   NF_TAG          Image tag to install (default: 3.10)
 #   NF_PORT         Console port (default: 8080)
-#   NF_DATA_DIR     NF data directory (rootless default: ~/nf/data, root default: /var/nf)
-#   NF_REDIS_DIR    Redis data directory (rootless default: ~/nf/redis, root default: /var/nf-redis)
-#   INSTALL_DIR     Where to write docker-compose.yml (rootless default: ~/nf, root default: /opt/nf)
+#   NF_DATA_DIR     NF data directory (rootless/macOS default: ~/nf/data, root default: /var/nf)
+#   NF_REDIS_DIR    Redis data directory (rootless/macOS default: ~/nf/redis, root default: /var/nf-redis)
+#   INSTALL_DIR     Where to write docker-compose.yml (rootless/macOS default: ~/nf, root default: /opt/nf)
+#   NF_TZ           Timezone for the container (macOS only; default: host timezone)
+#   NF_ASSUME_YES   Set to 1 to skip the Docker Desktop confirmation prompt
+#   NF_COMPOSE_REF  Git ref to fetch compose templates from (default: master)
 # By default the installer prints a sign-in link: you sign in and set up the site, and that
 # same approval licenses the box once it boots — no second sign-in. GA images pull
 # anonymously, so there's no registry login in that path.
@@ -17,7 +20,9 @@
 #   NF_REGISTRY     Registry hostname  }  and pull directly (box stays unlicensed until you
 #                                          license it from the console)
 
-COMPOSE_BASE_URL="https://raw.githubusercontent.com/normalframework/nf-sdk/master/compose"
+# NF_COMPOSE_REF selects the git ref the compose templates are fetched from, so a
+# branch can be tested end to end before it lands on master.
+COMPOSE_BASE_URL="${NF_COMPOSE_BASE_URL:-https://raw.githubusercontent.com/normalframework/nf-sdk/${NF_COMPOSE_REF:-master}/compose}"
 set -e
 
 # ── Colors ────────────────────────────────────────────────────────────────────
@@ -53,10 +58,23 @@ _json_str() {
     | sed 's/.*:[[:space:]]*"\(.*\)"$/\1/'
 }
 
+# Return 0 if something is already listening on TCP port $1.
+# ss is Linux-only; macOS has neither ss nor a useful netstat -p, so fall back
+# to lsof there.  If no tool answers, assume the port is free.
+_port_in_use() {
+  if command -v ss >/dev/null 2>&1; then
+    ss -tln 2>/dev/null | grep -q "[:.]$1 "
+  elif command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
+  else
+    netstat -an 2>/dev/null | grep -q "[:.]$1 .*LISTEN"
+  fi
+}
+
 # Find the first free TCP port starting from $1
 find_free_port() {
   _p="$1"
-  while ss -tlnp 2>/dev/null | grep -q ":$_p "; do
+  while _port_in_use "$_p"; do
     _p=$((_p + 1))
   done
   echo "$_p"
@@ -102,6 +120,22 @@ BANNER
 printf "${NC}"
 printf "${BOLD}Normal Framework Installer${NC} — version %s\n\n" "$NF_TAG"
 
+# Warning shown whenever NF ends up on a VM-backed Docker (Docker Desktop on
+# any platform, or podman machine).  These limits are the runtime's, not ours.
+desktop_limitations() {
+  warn "Docker Desktop is fine for evaluation and development, but is NOT recommended for production:"
+  printf "      • ${BOLD}BACnet/IP broadcast does not work.${NC} Containers run in a Linux VM behind\n"
+  printf "        NAT, so Who-Is/I-Am discovery neither reaches the LAN nor arrives from it.\n"
+  printf "        Devices must be polled by unicast address, or reached via a BBMD using\n"
+  printf "        foreign-device registration. BACnet/Ethernet and MS/TP do not work at all.\n"
+  printf "      • ${BOLD}It does not reliably come back after a restart.${NC} Containers only run\n"
+  printf "        while Docker Desktop runs, which needs a desktop login — after a reboot NF\n"
+  printf "        stays down until someone logs in, and sleep/resume can wedge the VM.\n"
+  printf "      • ${BOLD}Volumes are slower${NC} and redis persistence goes through the VM's file\n"
+  printf "        sharing layer rather than a real filesystem.\n"
+  printf "      For production, run NF on Linux with host networking.\n"
+}
+
 # ── Prerequisites ─────────────────────────────────────────────────────────────
 step "Checking prerequisites"
 
@@ -110,10 +144,19 @@ step "Checking prerequisites"
 
 # OS
 OS_ID="unknown"
-if [ -f /etc/os-release ]; then
-  # shellcheck disable=SC1091
-  OS_ID="$(. /etc/os-release && echo "$ID")"
-fi
+IS_MACOS=false
+case "$(uname -s 2>/dev/null)" in
+  Darwin)
+    IS_MACOS=true
+    OS_ID="macos"
+    ;;
+  *)
+    if [ -f /etc/os-release ]; then
+      # shellcheck disable=SC1091
+      OS_ID="$(. /etc/os-release && echo "$ID")"
+    fi
+    ;;
+esac
 
 # Privilege
 if [ "$(id -u)" -eq 0 ]; then
@@ -136,6 +179,18 @@ fi
 if [ -z "$DCMD" ]; then
   step "Installing Docker"
   case "$OS_ID" in
+    macos)
+      # Nothing to install unattended here: Docker Desktop is a signed .app
+      # that needs an admin install, and Homebrew may not be present.
+      warn "No container runtime found on this Mac."
+      printf "\n  Install Docker Desktop, then re-run this installer:\n"
+      printf "    ${BOLD}brew install --cask docker${NC}\n"
+      printf "    …or download it from ${BOLD}https://docs.docker.com/desktop/setup/install/mac-install/${NC}\n"
+      printf "\n  Launch Docker Desktop once after installing so the daemon starts.\n\n"
+      desktop_limitations
+      printf "\n"
+      die "Docker is not installed."
+      ;;
     ubuntu|debian|raspbian)
       info "Installing Docker CE via apt..."
       # DEBIAN_FRONTEND and NEEDRESTART_MODE suppress interactive prompts
@@ -179,11 +234,33 @@ fi
 # ── Make sure Docker daemon is reachable ──────────────────────────────────────
 if ! $DCMD info >/dev/null 2>&1; then
   info "Docker daemon not responding, trying to start it..."
-  $SUDO systemctl start docker 2>/dev/null || true
-  sleep 3
+  if [ "$IS_MACOS" = "true" ]; then
+    # Docker Desktop / Podman Desktop are GUI apps — launch and wait for the
+    # VM to boot, which takes appreciably longer than starting a daemon.
+    if [ "$DCMD" = "podman" ]; then
+      podman machine start >/dev/null 2>&1 || true
+    else
+      open -a Docker 2>/dev/null || open -a "Docker Desktop" 2>/dev/null || true
+    fi
+    _waited=0
+    printf "Waiting for the Docker Desktop VM "
+    while [ "$_waited" -lt 90 ]; do
+      $DCMD info >/dev/null 2>&1 && break
+      printf "."
+      sleep 3
+      _waited=$((_waited + 3))
+    done
+    printf "\n"
+  else
+    $SUDO systemctl start docker 2>/dev/null || true
+    sleep 3
+  fi
 fi
 
 if ! $DCMD info >/dev/null 2>&1; then
+  if [ "$IS_MACOS" = "true" ]; then
+    die "Cannot reach the Docker daemon. Start Docker Desktop from Applications, wait for the whale icon to stop animating, then re-run this installer."
+  fi
   # Not in docker group yet — add user and bake sudo into DCMD for this session
   if [ "$IS_ROOT" = "false" ] && $SUDO $DCMD info >/dev/null 2>&1; then
     $SUDO usermod -aG docker "$USER" 2>/dev/null || true
@@ -196,9 +273,32 @@ fi
 
 ok "Docker is running: $(${DCMD} --version 2>/dev/null | head -1)"
 
+DOCKER_INFO="$($DCMD info 2>/dev/null)"
+
+# ── Docker Desktop (VM-backed runtime) ────────────────────────────────────────
+# Docker Desktop reports "Operating System: Docker Desktop" on every platform,
+# so this catches Mac and Windows/WSL as well as Docker Desktop on Linux.
+IS_DESKTOP=false
+if [ "$IS_MACOS" = "true" ] || echo "$DOCKER_INFO" | grep -qi "Docker Desktop"; then
+  IS_DESKTOP=true
+fi
+
+if [ "$IS_DESKTOP" = "true" ]; then
+  step "Docker Desktop detected"
+  desktop_limitations
+  if [ "${NF_ASSUME_YES:-}" != "1" ] && [ -e /dev/tty ]; then
+    printf "\n"
+    ask _CONTINUE "Continue installing on Docker Desktop? (y/n)" "y"
+    case "$_CONTINUE" in
+      [Yy]*) ;;
+      *) die "Aborted. Set NF_ASSUME_YES=1 to skip this prompt." ;;
+    esac
+  fi
+fi
+
 # ── Detect rootless mode ──────────────────────────────────────────────────────
 ROOTLESS=false
-if $DCMD info 2>/dev/null | grep -qi rootless; then
+if echo "$DOCKER_INFO" | grep -qi rootless; then
   ROOTLESS=true
 fi
 if [ "$DCMD" = "podman" ]; then
@@ -221,6 +321,9 @@ fi
 if [ -z "$CCMD" ]; then
   info "Installing docker compose plugin..."
   case "$OS_ID" in
+    macos)
+      warn "Docker Desktop bundles the compose plugin — update Docker Desktop to get it."
+      ;;
     ubuntu|debian|raspbian)
       $SUDO apt-get install -y -q docker-compose-plugin 2>/dev/null || true
       ;;
@@ -245,17 +348,29 @@ fi
 ok "Compose: $CCMD ($($CCMD version --short 2>/dev/null || echo 'version unknown'))"
 
 # ── If rootless, we don't need sudo for docker commands ───────────────────────
-if [ "$ROOTLESS" = "true" ]; then
+# On macOS the daemon lives in a VM owned by the logged-in user: sudo buys
+# nothing, and paths must stay under $HOME so Docker Desktop's file sharing
+# will mount them without extra configuration.
+if [ "$ROOTLESS" = "true" ] || [ "$IS_MACOS" = "true" ]; then
   SUDO_DCMD=""
+  SUDO_FS=""            # everything lives under $HOME
   INSTALL_DIR="${INSTALL_DIR:-$HOME/nf}"
   NF_DATA_DIR="${NF_DATA_DIR:-$HOME/nf/data}"
   NF_REDIS_DIR="${NF_REDIS_DIR:-$HOME/nf/redis}"
 else
   # If sudo is already baked into DCMD (docker group workaround), don't double-prefix
   case "$DCMD" in sudo*) SUDO_DCMD="" ;; *) SUDO_DCMD="$SUDO" ;; esac
+  SUDO_FS="$SUDO"
   INSTALL_DIR="${INSTALL_DIR:-/opt/nf}"
   NF_DATA_DIR="${NF_DATA_DIR:-/var/nf}"
   NF_REDIS_DIR="${NF_REDIS_DIR:-/var/nf-redis}"
+fi
+
+# Container timezone: /etc/localtime can't be bind-mounted into the Docker
+# Desktop VM, so the macOS compose file takes TZ as a variable instead.
+if [ "$IS_MACOS" = "true" ] && [ -z "${NF_TZ:-}" ]; then
+  NF_TZ="$(readlink /etc/localtime 2>/dev/null | sed -e 's|.*/zoneinfo/||')"
+  NF_TZ="${NF_TZ:-UTC}"
 fi
 
 ENV_FILE="$INSTALL_DIR/.env"
@@ -263,11 +378,14 @@ ENV_FILE="$INSTALL_DIR/.env"
 # ── Port selection ────────────────────────────────────────────────────────────
 # On a re-run (existing install) reuse the ports already in .env so we upgrade the
 # same instance in place. On a fresh install, pick free ports if the defaults are taken.
+# SUDO_FS (not SUDO) so an install under $HOME — rootless or macOS — never
+# shells out to sudo here; its password prompt would be swallowed by 2>/dev/null
+# and the installer would look like it had hung.
 _read_env_var() {  # $1=var name -> value from an existing (possibly root-owned) .env
-  { $SUDO cat "$ENV_FILE" 2>/dev/null || cat "$ENV_FILE" 2>/dev/null; } \
+  { cat "$ENV_FILE" 2>/dev/null || $SUDO_FS cat "$ENV_FILE" 2>/dev/null; } \
     | grep "^$1=" | head -1 | cut -d= -f2-
 }
-if [ -f "$ENV_FILE" ] || { [ -n "$SUDO" ] && $SUDO test -f "$ENV_FILE"; }; then
+if [ -f "$ENV_FILE" ] || { [ -n "$SUDO_FS" ] && $SUDO_FS test -f "$ENV_FILE"; }; then
   IS_UPGRADE=true
   _e_nf="$(_read_env_var NF_PORT)";       [ -n "$_e_nf" ] && NF_PORT="$_e_nf"
   _e_redis="$(_read_env_var NF_REDIS_PORT)"; [ -n "$_e_redis" ] && NF_REDIS_PORT="$_e_redis"
@@ -304,6 +422,15 @@ check_auth() {
 
   # Not in config at all → not logged in
   grep -q "\"$_reg\"" "$_cfg" 2>/dev/null || return 1
+
+  # Docker Desktop keeps credentials in an external helper (credsStore), so
+  # config.json holds an empty entry and there's nothing to verify here — just
+  # log in again, which is cheap and idempotent.
+  grep -q '"credsStore"' "$_cfg" 2>/dev/null && return 1
+
+  # python3 may be an unconfigured stub on macOS; don't invoke it if calling it
+  # would just pop the Xcode command line tools installer.
+  command -v python3 >/dev/null 2>&1 || return 1
 
   # Extract stored auth (base64 user:pass) and ping the registry v2 API.
   # A 200/401-with-challenge means the server is reachable; a 401 without our
@@ -415,7 +542,7 @@ fi
 # ── Directories ───────────────────────────────────────────────────────────────
 step "Setting up directories"
 
-_mkdir() { if [ "$ROOTLESS" = "true" ]; then mkdir -p "$1"; else $SUDO mkdir -p "$1"; fi; }
+_mkdir() { $SUDO_FS mkdir -p "$1"; }
 
 for d in "$NF_DATA_DIR" "$NF_REDIS_DIR" "$INSTALL_DIR"; do
   if [ ! -d "$d" ]; then
@@ -427,8 +554,10 @@ for d in "$NF_DATA_DIR" "$NF_REDIS_DIR" "$INSTALL_DIR"; do
 done
 
 # ── Docker daemon log rotation ────────────────────────────────────────────────
-# Only configure if running as root and Docker is the runtime (not Podman)
-if [ "$IS_ROOT" = "true" ] && [ "$DCMD" = "docker" ]; then
+# Only configure if running as root on Linux with Docker as the runtime; the
+# Docker Desktop VM has its own daemon config, and the compose file sets
+# per-container log limits anyway.
+if [ "$IS_ROOT" = "true" ] && [ "$DCMD" = "docker" ] && [ "$IS_MACOS" = "false" ]; then
   DAEMON_JSON="/etc/docker/daemon.json"
   if [ ! -f "$DAEMON_JSON" ]; then
     step "Configuring Docker log rotation"
@@ -452,7 +581,11 @@ step "Setting up docker-compose.yml"
 
 COMPOSE_FILE="$INSTALL_DIR/docker-compose.yml"
 
-if [ "$ROOTLESS" = "true" ]; then
+if [ "$IS_MACOS" = "true" ]; then
+  # No host networking in the Docker Desktop VM — the macOS variant publishes
+  # ports and talks to redis over the compose network instead.
+  COMPOSE_VARIANT="macos"
+elif [ "$ROOTLESS" = "true" ]; then
   COMPOSE_VARIANT="linux-rootless"
 else
   COMPOSE_VARIANT="linux"
@@ -468,14 +601,23 @@ curl -fsSL "$COMPOSE_BASE_URL/$COMPOSE_VARIANT.yml" -o "$_tmp" \
 if [ -w "$INSTALL_DIR" ]; then
   mv "$_tmp" "$COMPOSE_FILE"
 else
-  $SUDO cp "$_tmp" "$COMPOSE_FILE"
+  $SUDO_FS cp "$_tmp" "$COMPOSE_FILE"
   rm -f "$_tmp"
 fi
 ok "Downloaded compose/$COMPOSE_VARIANT.yml → $COMPOSE_FILE"
 
-# Compute memory limits from total RAM (redis=33%, nf=50%)
+# Compute memory limits from available RAM (redis=33%, nf=50%).  /proc/meminfo
+# is Linux-only; on macOS ask Docker for the VM's memory, since that — not the
+# Mac's RAM — is what the containers actually get.
 _mem_kb=$(awk '/MemTotal/ { print $2 }' /proc/meminfo 2>/dev/null || echo 0)
-if [ "$_mem_kb" -gt 0 ] 2>/dev/null; then
+if [ "${_mem_kb:-0}" -le 0 ] 2>/dev/null && [ "$IS_MACOS" = "true" ]; then
+  _mem_kb=$(echo "$DOCKER_INFO" | awk '/Total Memory:/ {
+    v = $3
+    sub(/GiB/, "", v); if (v != $3) { printf "%d", v * 1024 * 1024; exit }
+    v = $3; sub(/MiB/, "", v); if (v != $3) { printf "%d", v * 1024; exit }
+  }')
+fi
+if [ "${_mem_kb:-0}" -gt 0 ] 2>/dev/null; then
   NF_REDIS_MEM_LIMIT="$(awk "BEGIN { printf \"%dm\", $_mem_kb / 3 / 1024 }")"
   NF_MEM_LIMIT="$(awk "BEGIN { printf \"%dm\", $_mem_kb / 2 / 1024 }")"
 else
@@ -495,10 +637,13 @@ NF_REDIS_PORT=${NF_REDIS_PORT}
 NF_REDIS_MEM_LIMIT=${NF_REDIS_MEM_LIMIT}
 NF_MEM_LIMIT=${NF_MEM_LIMIT}
 EOF
+if [ -n "${NF_TZ:-}" ]; then
+  printf 'NF_TZ=%s\n' "$NF_TZ" >>"$_env_tmp"
+fi
 if [ -w "$INSTALL_DIR" ]; then
   mv "$_env_tmp" "$ENV_FILE"
 else
-  $SUDO cp "$_env_tmp" "$ENV_FILE"
+  $SUDO_FS cp "$_env_tmp" "$ENV_FILE"
   rm -f "$_env_tmp"
 fi
 ok "Wrote $ENV_FILE"
@@ -631,5 +776,14 @@ fi
 if [ "${LINKED:-false}" != "true" ]; then
   printf "\n  ${YELLOW}Not licensed yet:${NC} re-run this installer to finish, or license\n"
   printf "  from the console at http://localhost:%s\n" "$NF_PORT"
+fi
+if [ "$IS_DESKTOP" = "true" ]; then
+  printf "\n"
+  warn "Reminder — this is a Docker Desktop install, for evaluation only:"
+  printf "      • BACnet discovery by broadcast will find nothing; add devices by unicast\n"
+  printf "        address or register with a BBMD as a foreign device.\n"
+  printf "      • NF is down whenever Docker Desktop is not running, including after a\n"
+  printf "        reboot. Enable ${BOLD}Settings → General → Start Docker Desktop when you sign in${NC},\n"
+  printf "        and restart with: cd %s && %s up -d\n" "$INSTALL_DIR" "$CCMD"
 fi
 printf "\n"

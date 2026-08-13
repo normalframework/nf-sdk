@@ -1,0 +1,66 @@
+# Docker Desktop (macOS) variant — DEVELOPMENT / EVALUATION ONLY.
+#
+# Docker Desktop runs containers inside a Linux VM, so `network_mode: host`
+# is not available on macOS.  This file uses the default bridge network with
+# published ports instead.  That has real consequences:
+#
+#   * BACnet/IP broadcast does not work.  Who-Is / I-Am discovery, and any
+#     other broadcast traffic, neither reaches the LAN nor arrives from it,
+#     because the VM sits behind NAT.  Devices can still be polled by unicast
+#     address, or reached by registering with a BBMD as a foreign device.
+#   * BACnet/Ethernet and anything needing a real interface on the LAN
+#     (raw sockets, MS/TP over a local NIC) does not work at all.
+#   * `restart: unless-stopped` only applies while Docker Desktop is running.
+#     After a reboot the containers stay down until someone logs in and
+#     Docker Desktop starts, and VM suspend/resume around sleep can leave
+#     services wedged until a `docker compose restart`.
+#   * Volumes are bind mounts through the VM's file sharing layer: slower,
+#     and redis fsync behaviour is not what it is on Linux.
+#
+# For production, run NF on Linux with compose/linux.yml.
+services:
+
+  nf:
+    image: ${REGISTRY:-normal.azurecr.io}/normalframework/nf-full:${NF_TAG:-3.10}
+    depends_on:
+      - redis
+    ports:
+      - "${NF_PORT:-8080}:${NF_PORT:-8080}"
+      # BACnet/IP unicast and foreign-device registration.  Broadcast
+      # discovery will not work through this mapping; see the note above.
+      - "47808:47808/udp"
+    cap_add:
+      - NET_RAW
+      - SYS_CHROOT
+    volumes:
+      - ${NF_DATA_DIR}:/var/nf
+    restart: unless-stopped
+    environment:
+      - PORT=${NF_PORT:-8080}
+      # No host networking, so redis is reached over the compose network.
+      - REDIS_ADDRESS=redis:6379
+      # /etc/localtime cannot be bind-mounted into the Docker Desktop VM,
+      # so the timezone is passed explicitly instead.
+      - TZ=${NF_TZ:-UTC}
+    mem_limit: ${NF_MEM_LIMIT:-2g}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: ${REGISTRY:-normal.azurecr.io}/normalframework/redis:${NF_TAG:-3.10}
+    # nf reaches redis over the compose network; this mapping is only so you
+    # can inspect it from the Mac with redis-cli.
+    ports:
+      - "127.0.0.1:${NF_REDIS_PORT:-6379}:6379"
+    volumes:
+      - ${NF_REDIS_DIR}:/data
+    restart: unless-stopped
+    mem_limit: ${NF_REDIS_MEM_LIMIT:-1g}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

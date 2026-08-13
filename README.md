@@ -6,7 +6,7 @@ Welcome to the NF SDK. This repository contains an installer script, `docker-com
 
 ## Quick Install
 
-Run this on any Linux machine (Ubuntu 22.04+, Fedora 42+, or any system with Docker/Podman already installed):
+Run this on any Linux machine (Ubuntu 22.04+, Fedora 42+, or any system with Docker/Podman already installed), or on a Mac with Docker Desktop for evaluation:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/normalframework/nf-sdk/master/install.sh | sh
@@ -35,11 +35,12 @@ and licenses the box automatically. The management console is at the address it 
 
 ### What the installer does
 
-1. Installs Docker CE if not already present (Ubuntu/Debian via apt, Fedora/RHEL via dnf)
+1. Installs Docker CE if not already present (Ubuntu/Debian via apt, Fedora/RHEL via dnf; on
+   macOS it points you at Docker Desktop rather than installing it)
 2. Prints a browser sign-in link; signing in returns short-lived registry pull credentials
    and records your site details
 3. Pulls the `nf-full` and `redis` containers and writes `docker-compose.yml` + `.env` to
-   `/opt/nf` (or `~/nf` for rootless runtimes)
+   `/opt/nf` (or `~/nf` for rootless runtimes and macOS)
 4. Starts Normal Framework and waits for the console
 5. Exchanges the sign-in for a license once the box reports its machine id — no second sign-in
 
@@ -65,18 +66,33 @@ To install without a browser, set `NF_USERNAME` + `NF_PASSWORD` (registry creden
 the environment. The installer pulls with those and skips the sign-in; the box stays
 unlicensed until you license it from the console (or via `AUTO_PROVISION_KEY`).
 
+### macOS / Docker Desktop
+
+The installer supports Docker Desktop on a Mac, but **only for evaluation and development**. Docker Desktop runs containers inside a Linux VM, which means:
+
+- **BACnet/IP broadcast does not work.** The VM is behind NAT, so Who-Is/I-Am discovery neither reaches the LAN nor arrives from it. Devices can be polled by unicast address, or reached through a BBMD using foreign-device registration. BACnet/Ethernet and MS/TP do not work at all.
+- **NF does not reliably come back after a restart.** Containers only run while Docker Desktop is running, which requires a desktop login — after a reboot NF stays down until someone signs in, and sleep/resume can wedge the VM. Turn on *Settings → General → Start Docker Desktop when you sign in* and expect to `docker compose up -d` by hand sometimes.
+- **Volumes are bind mounts through the VM's file sharing layer**, so I/O is slower and redis persistence does not behave the way it does on Linux.
+
+Because host networking is unavailable, the Mac install uses [`compose/macos.yml`](compose/macos.yml): a bridge network with the console published on `${NF_PORT}` and BACnet/IP on `47808/udp`, data under `~/nf`, and the timezone passed in as `NF_TZ` (`/etc/localtime` cannot be mounted into the VM).
+
+For production, run NF on Linux.
+
 ### Environment variables
 
 | Variable | Default | Description |
 |---|---|---|
 | `NF_TAG` | `3.10` | Container image tag to install |
 | `NF_PORT` | `8080` | Console port (auto-remapped if in use) |
-| `NF_DATA_DIR` | `/var/nf` | NF data directory (`~/nf/data` for rootless) |
-| `NF_REDIS_DIR` | `/var/nf-redis` | Redis data directory (`~/nf/redis` for rootless) |
-| `INSTALL_DIR` | `/opt/nf` | Where `docker-compose.yml` is written (`~/nf` for rootless) |
+| `NF_DATA_DIR` | `/var/nf` | NF data directory (`~/nf/data` for rootless and macOS) |
+| `NF_REDIS_DIR` | `/var/nf-redis` | Redis data directory (`~/nf/redis` for rootless and macOS) |
+| `INSTALL_DIR` | `/opt/nf` | Where `docker-compose.yml` is written (`~/nf` for rootless and macOS) |
 | `NF_USERNAME` | *(none)* | Registry username — escape hatch, skips the browser sign-in |
 | `NF_PASSWORD` | *(none)* | Registry password — escape hatch, skips the browser sign-in |
 | `NF_REGISTRY` | *(from sign-in)* | Registry hostname (only with `NF_USERNAME`/`NF_PASSWORD`) |
+| `NF_TZ` | *(host timezone)* | Container timezone, macOS only |
+| `NF_ASSUME_YES` | *(unset)* | Set to `1` to skip the Docker Desktop confirmation prompt |
+| `NF_COMPOSE_REF` | `master` | Git ref the compose templates are fetched from |
 
 ### After install
 
@@ -87,6 +103,13 @@ cd /opt/nf && sudo docker compose logs -f
 # Stop / start
 cd /opt/nf && sudo docker compose down
 cd /opt/nf && sudo docker compose up -d
+```
+
+On macOS (and rootless runtimes) the install lives in `~/nf` and needs no `sudo`:
+
+```sh
+cd ~/nf && docker compose logs -f
+cd ~/nf && docker compose up -d
 ```
 
 ---
