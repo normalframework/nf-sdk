@@ -354,9 +354,16 @@ ok "Compose: $CCMD ($($CCMD version --short 2>/dev/null || echo 'version unknown
 if [ "$ROOTLESS" = "true" ] || [ "$IS_MACOS" = "true" ]; then
   SUDO_DCMD=""
   SUDO_FS=""            # everything lives under $HOME
-  INSTALL_DIR="${INSTALL_DIR:-$HOME/nf}"
-  NF_DATA_DIR="${NF_DATA_DIR:-$HOME/nf/data}"
-  NF_REDIS_DIR="${NF_REDIS_DIR:-$HOME/nf/redis}"
+  # "nf" is also the name of the product binary, so ~/nf is quite likely to
+  # already exist as a file.  Fall back rather than failing on mkdir.
+  NF_BASE="$HOME/nf"
+  if [ -e "$NF_BASE" ] && [ ! -d "$NF_BASE" ]; then
+    NF_BASE="$HOME/.nf"
+    warn "$HOME/nf exists and is not a directory — installing to $NF_BASE instead"
+  fi
+  INSTALL_DIR="${INSTALL_DIR:-$NF_BASE}"
+  NF_DATA_DIR="${NF_DATA_DIR:-$NF_BASE/data}"
+  NF_REDIS_DIR="${NF_REDIS_DIR:-$NF_BASE/redis}"
 else
   # If sudo is already baked into DCMD (docker group workaround), don't double-prefix
   case "$DCMD" in sudo*) SUDO_DCMD="" ;; *) SUDO_DCMD="$SUDO" ;; esac
@@ -462,10 +469,25 @@ print(cfg.get('auths',{}).get('$_reg',{}).get('auth',''))
 REGISTRY="${NF_REGISTRY:-}"
 DEVICE_CODE=""   # set by the sign-in path; possession of it licenses the box later
 
+# The setup token minted by the sign-in is only good for an hour, and the
+# licensing exchange happens much later — after the images pull and the box
+# boots. Stamp when the grant started and stop using the token a few minutes
+# before it dies, so a slow pull ends in a clear "sign in again" message
+# instead of an opaque licensing failure.
+SIGNIN_TTL=3600
+SIGNIN_MARGIN=300
+SIGNIN_STARTED=""
+_signin_age()     { echo $(( $(date +%s) - SIGNIN_STARTED )); }
+_signin_expired() {
+  [ -n "$SIGNIN_STARTED" ] || return 1
+  [ "$(_signin_age)" -ge "$((SIGNIN_TTL - SIGNIN_MARGIN))" ]
+}
+
 # device_sign_in: run the device-authorization grant to set up the site (and, for enterprise
 # tenants, mint pull credentials). Sets DEVICE_CODE, REGISTRY, NF_USERNAME, NF_PASSWORD.
 device_sign_in() {
   # step 1: start a grant. No machine id yet — the box isn't running.
+  SIGNIN_STARTED="$(date +%s)"   # the token's hour starts ticking here
   _start="$(curl -sf -X POST "$PORTAL_URL/api/v1/license/device/start" \
     -H 'Content-Type: application/json' \
     -d "$(printf '{"version":"%s"}' "$NF_TAG")" 2>/dev/null || true)"
@@ -479,6 +501,8 @@ device_sign_in() {
   printf "\n  ${BOLD}Sign in to Normal to set up this site and authorize the download:${NC}\n\n"
   printf "    ${BOLD}${BLUE}%s${NC}\n\n" "$_verify_url"
   [ -n "$_user_code" ] && printf "    (code: ${BOLD}%s${NC})\n\n" "$_user_code"
+  printf "    This link is good for one hour, and the install has to finish\n"
+  printf "    within that hour to license the box automatically.\n\n"
 
   # steps 2/3: poll until you approve in the browser. Approval returns pull credentials for
   # enterprise tenants; for GA it returns none and the images pull anonymously.
@@ -542,7 +566,10 @@ fi
 # ── Directories ───────────────────────────────────────────────────────────────
 step "Setting up directories"
 
-_mkdir() { $SUDO_FS mkdir -p "$1"; }
+_mkdir() {
+  $SUDO_FS mkdir -p "$1" \
+    || die "Couldn't create $1 — a component of that path already exists as a file. Set INSTALL_DIR / NF_DATA_DIR / NF_REDIS_DIR to another location and re-run."
+}
 
 for d in "$NF_DATA_DIR" "$NF_REDIS_DIR" "$INSTALL_DIR"; do
   if [ ! -d "$d" ]; then
@@ -697,6 +724,16 @@ fi
 # only endpoints it already ships (/api/v1/platform/info and /api/v1/platform/license).
 step "Activate a license"
 BOX="http://localhost:$NF_PORT"
+
+# If the install ran long (slow pull, slow first boot) the setup token from the
+# sign-in is at or near its one-hour expiry. Say so plainly and drop it rather
+# than spending two minutes polling an exchange that cannot succeed.
+if [ -n "$DEVICE_CODE" ] && _signin_expired; then
+  warn "The sign-in from $(( $(_signin_age) / 60 )) minutes ago has expired — setup tokens are good for one hour."
+  warn "Everything else is installed and running. Re-run the installer to license this box;"
+  warn "it upgrades in place and will just ask you to sign in again."
+  DEVICE_CODE=""
+fi
 
 # Wait for the box API to answer — a fresh first boot can take a couple of minutes, and
 # activation needs it (to read the machine id and later install the license). This is a
