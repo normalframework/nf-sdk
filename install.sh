@@ -1,6 +1,7 @@
 #!/bin/sh
 # Normal Framework (NF) installer
 # Usage: curl -fsSL https://raw.githubusercontent.com/normalframework/nf-sdk/master/install.sh | sh
+#    or: curl -fsSL .../install.sh | sh -s -- --offline      (no portal, see below)
 #
 # Environment variables (all optional):
 #   NF_TAG          Image tag to install (default: 3.10)
@@ -19,6 +20,13 @@
 #   NF_PASSWORD     Registry password  }  CI install: set these to skip the browser sign-in
 #   NF_REGISTRY     Registry hostname  }  and pull directly (box stays unlicensed until you
 #                                          license it from the console)
+#
+# Offline mode (--offline, or NF_OFFLINE=1) never contacts the portal: you supply the
+# registry pull credentials yourself (env or interactive prompt), it pulls Enterprise
+# images by default, and it does not activate a license.
+#
+#   NF_OFFLINE      Set to 1/true for offline mode (same as --offline)
+#   NF_RELEASE      enterprise (offline default) or ga — picks the default registry
 
 # NF_COMPOSE_REF selects the git ref the compose templates are fetched from, so a
 # branch can be tested end to end before it lands on master.
@@ -40,9 +48,48 @@ NF_REDIS_PORT="${NF_REDIS_PORT:-6379}"
 # Directory defaults are set after rootless detection below
 
 GA_REGISTRY="normal.azurecr.io"
+ENTERPRISE_REGISTRY="normalframework.azurecr.io"
 # NF_PORTAL_URL overrides the portal the installer signs in against (e.g. a dev/staging
 # portal). Defaults to production.
 PORTAL_URL="${NF_PORTAL_URL:-https://portal.normal-online.net}"
+
+# ── Offline mode ──────────────────────────────────────────────────────────────
+# --offline / NF_OFFLINE=1: skip the portal entirely. You bring the pull secret, we pull
+# the images and start the box, and nothing is activated.
+OFFLINE=false
+case "${NF_OFFLINE:-}" in 1|true|TRUE|yes|y) OFFLINE=true ;; esac
+for _arg in "$@"; do
+  case "$_arg" in
+    --offline) OFFLINE=true ;;
+    --online)  OFFLINE=false ;;
+    -h|--help)
+      cat <<'USAGE'
+Normal Framework installer
+
+  install.sh [--offline]
+
+  (default)   Sign in through the portal: sets up the site, pulls the images and
+              licenses the box automatically.
+  --offline   No portal. You supply the registry pull credentials (NF_USERNAME /
+              NF_PASSWORD, or you'll be prompted), Enterprise images are pulled,
+              and no license is activated.
+
+Environment: NF_TAG NF_PORT NF_DATA_DIR NF_REDIS_DIR INSTALL_DIR
+             NF_USERNAME NF_PASSWORD NF_REGISTRY NF_OFFLINE NF_RELEASE
+USAGE
+      exit 0
+      ;;
+    *) printf "Unknown option: %s (try --help)\n" "$_arg" >&2; exit 2 ;;
+  esac
+done
+
+# Which registry an offline install defaults to. Enterprise images don't need a license;
+# GA images do, and are pulled anonymously.
+NF_RELEASE="${NF_RELEASE:-enterprise}"
+case "$NF_RELEASE" in
+  ga|GA)  DEFAULT_OFFLINE_REGISTRY="$GA_REGISTRY" ;;
+  *)      DEFAULT_OFFLINE_REGISTRY="$ENTERPRISE_REGISTRY" ;;
+esac
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 info()    { printf "${BLUE}[→]${NC} %s\n" "$*"; }
@@ -118,7 +165,11 @@ _____\__\:\   /  /:/ /:/
     \__\/         \__\/
 BANNER
 printf "${NC}"
-printf "${BOLD}Normal Framework Installer${NC} — version %s\n\n" "$NF_TAG"
+printf "${BOLD}Normal Framework Installer${NC} — version %s\n" "$NF_TAG"
+if [ "$OFFLINE" = "true" ]; then
+  printf "${YELLOW}offline mode${NC} — no portal sign-in, no license activation\n"
+fi
+printf "\n"
 
 # Warning shown whenever NF ends up on a VM-backed Docker (Docker Desktop on
 # any platform, or podman machine).  These limits are the runtime's, not ours.
@@ -530,7 +581,30 @@ device_sign_in() {
   die "Timed out waiting for sign-in — re-run the installer."
 }
 
-if [ -n "$NF_USERNAME" ] && [ -n "$NF_PASSWORD" ]; then
+if [ "$OFFLINE" = "true" ]; then
+  # (0) offline: the portal is never contacted. Credentials come from the environment,
+  # from a cached login, or from an interactive prompt. GA images still pull anonymously.
+  [ -n "$REGISTRY" ] || REGISTRY="$DEFAULT_OFFLINE_REGISTRY"
+  if [ -n "$NF_USERNAME" ] && [ -n "$NF_PASSWORD" ]; then
+    info "Offline install — using registry credentials from the environment"
+  elif check_auth "$REGISTRY"; then
+    ok "Offline install — already authenticated with $REGISTRY (token valid)"
+    SKIP_LOGIN=true
+  elif [ "$REGISTRY" = "$GA_REGISTRY" ]; then
+    info "Offline install — pulling from $REGISTRY (no registry login needed)"
+    SKIP_LOGIN=true
+  elif [ -r /dev/tty ]; then
+    info "Offline install — enter the pull credentials for the Normal registry."
+    info "(These are the same credentials you'd use for 'docker login'.)"
+    ask        REGISTRY    "Registry" "$REGISTRY"
+    ask        NF_USERNAME "Registry username"
+    ask_secret NF_PASSWORD "Registry password"
+    [ -n "$NF_USERNAME" ] && [ -n "$NF_PASSWORD" ] \
+      || die "Registry username and password are required for an offline install."
+  else
+    die "Offline install needs registry credentials: set NF_USERNAME and NF_PASSWORD (and NF_REGISTRY for a non-default registry), or run the installer from a terminal to be prompted."
+  fi
+elif [ -n "$NF_USERNAME" ] && [ -n "$NF_PASSWORD" ]; then
   # (1) explicit credentials from the environment
   [ -n "$REGISTRY" ] || REGISTRY="$GA_REGISTRY"
   info "Using registry credentials from the environment"
@@ -621,17 +695,36 @@ fi
 # Always fetch the current compose. It's a parameterized template driven entirely by
 # .env, so overwriting is safe and ensures re-runs/upgrades pick up compose fixes
 # instead of keeping a stale copy.
-info "Downloading compose/$COMPOSE_VARIANT.yml..."
+# NF_COMPOSE_FILE points at a local compose template instead of downloading one — useful
+# for an offline install on a box that can reach the registry but not GitHub.
 _tmp="$(mktemp)"
-curl -fsSL "$COMPOSE_BASE_URL/$COMPOSE_VARIANT.yml" -o "$_tmp" \
-  || die "Failed to download compose file from $COMPOSE_BASE_URL/$COMPOSE_VARIANT.yml"
-if [ -w "$INSTALL_DIR" ]; then
-  mv "$_tmp" "$COMPOSE_FILE"
+if [ -n "${NF_COMPOSE_FILE:-}" ]; then
+  [ -f "$NF_COMPOSE_FILE" ] || die "NF_COMPOSE_FILE=$NF_COMPOSE_FILE not found"
+  info "Using compose file $NF_COMPOSE_FILE"
+  cp "$NF_COMPOSE_FILE" "$_tmp"
+  _compose_src="$NF_COMPOSE_FILE"
 else
-  $SUDO_FS cp "$_tmp" "$COMPOSE_FILE"
-  rm -f "$_tmp"
+  info "Downloading compose/$COMPOSE_VARIANT.yml..."
+  if ! curl -fsSL "$COMPOSE_BASE_URL/$COMPOSE_VARIANT.yml" -o "$_tmp"; then
+    rm -f "$_tmp"; _tmp=""
+    # An offline/upgrade install can keep the compose it already has; a fresh install can't.
+    if [ -f "$COMPOSE_FILE" ] || { [ -n "$SUDO_FS" ] && $SUDO_FS test -f "$COMPOSE_FILE"; }; then
+      warn "Couldn't download the compose file — keeping the existing $COMPOSE_FILE"
+    else
+      die "Failed to download compose file from $COMPOSE_BASE_URL/$COMPOSE_VARIANT.yml (set NF_COMPOSE_FILE=/path/to/compose.yml to use a local copy)"
+    fi
+  fi
+  _compose_src="compose/$COMPOSE_VARIANT.yml"
 fi
-ok "Downloaded compose/$COMPOSE_VARIANT.yml → $COMPOSE_FILE"
+if [ -n "$_tmp" ]; then
+  if [ -w "$INSTALL_DIR" ]; then
+    mv "$_tmp" "$COMPOSE_FILE"
+  else
+    $SUDO_FS cp "$_tmp" "$COMPOSE_FILE"
+    rm -f "$_tmp"
+  fi
+  ok "Installed $_compose_src → $COMPOSE_FILE"
+fi
 
 # Compute memory limits from available RAM (redis=33%, nf=50%).  /proc/meminfo
 # is Linux-only; on macOS ask Docker for the VM's memory, since that — not the
@@ -718,12 +811,24 @@ if [ "${READY:-false}" != "true" ]; then
 fi
 
 # ── Activate a license ────────────────────────────────────────────────────────
-# The site was already set up during the sign-in at the start; possession of DEVICE_CODE is
+# Offline installs stop here — nothing was signed in, so there's nothing to activate.
+# Online: the site was already set up during the sign-in at the start; possession of DEVICE_CODE is
 # the approved capability. Now that the box is running and has a machine id, exchange the
 # device_code for a license (no second sign-in) and install it over localhost. The box uses
 # only endpoints it already ships (/api/v1/platform/info and /api/v1/platform/license).
-step "Activate a license"
 BOX="http://localhost:$NF_PORT"
+
+if [ "$OFFLINE" = "true" ]; then
+  step "License"
+  if [ "$REGISTRY" = "$ENTERPRISE_REGISTRY" ]; then
+    info "Offline install — Enterprise images don't require activation."
+  else
+    info "Offline install — no license was activated. License this site from the"
+    info "console at $BOX (or set AUTO_PROVISION_KEY)."
+  fi
+else
+
+step "Activate a license"
 
 # If the install ran long (slow pull, slow first boot) the setup token from the
 # sign-in is at or near its one-hour expiry. Say so plainly and drop it rather
@@ -792,6 +897,8 @@ else
   fi
 fi
 
+fi  # end of the online (portal) activation path
+
 # ── Done ──────────────────────────────────────────────────────────────────────
 printf "\n${GREEN}${BOLD}"
 printf "╔══════════════════════════════════════════════╗\n"
@@ -810,7 +917,12 @@ printf "  Manage:  cd %s && %s [logs|ps|down|up]\n" "$INSTALL_DIR" "$CCMD"
 if [ "${LINKED:-false}" = "true" ] && [ -n "${INSTANCE_UUID:-}" ]; then
   printf "\n  ${BLUE}Remote access may take a minute to come online (DNS + tunnel).${NC}\n"
 fi
-if [ "${LINKED:-false}" != "true" ]; then
+if [ "$OFFLINE" = "true" ]; then
+  if [ "$REGISTRY" != "$ENTERPRISE_REGISTRY" ]; then
+    printf "\n  ${YELLOW}Not licensed:${NC} offline install — license from the console at\n"
+    printf "  http://localhost:%s\n" "$NF_PORT"
+  fi
+elif [ "${LINKED:-false}" != "true" ]; then
   printf "\n  ${YELLOW}Not licensed yet:${NC} re-run this installer to finish, or license\n"
   printf "  from the console at http://localhost:%s\n" "$NF_PORT"
 fi

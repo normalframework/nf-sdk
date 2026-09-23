@@ -60,11 +60,39 @@ it and deactivates the old one.
 Every image pull is gated behind a Normal portal account — there is no anonymous pull. GA
 and Enterprise use the same flow; the portal returns the right registry for your account.
 
-### CI / air-gapped installs
+### Offline install (no portal)
 
-To install without a browser, set `NF_USERNAME` + `NF_PASSWORD` (registry credentials) in
-the environment. The installer pulls with those and skips the sign-in; the box stays
-unlicensed until you license it from the console (or via `AUTO_PROVISION_KEY`).
+Enterprise and CI installs can skip the portal entirely with `--offline`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/normalframework/nf-sdk/master/install.sh \
+  | sh -s -- --offline
+```
+
+Offline mode never contacts the portal. It prompts for the registry pull credentials (the
+same ones you'd use for `docker login`), pulls the **Enterprise** images from
+`normalframework.azurecr.io`, starts the containers, and **does not activate a license** —
+Enterprise images don't need one.
+
+For an unattended run, supply the pull secret in the environment instead of at the prompt:
+
+```sh
+NF_OFFLINE=1 NF_USERNAME=<user> NF_PASSWORD=<token> sh install.sh
+```
+
+Add `NF_RELEASE=ga` to pull GA images offline instead (`normal.azurecr.io`, anonymous pull,
+no credentials needed) — those boxes come up unlicensed and are licensed from the console
+or via `AUTO_PROVISION_KEY`.
+
+If the box can reach the registry but not GitHub, point `NF_COMPOSE_FILE` at a local copy
+of `compose/linux.yml` (or `compose/linux-rootless.yml`) to skip the compose download.
+
+### CI installs (online registry, no browser)
+
+To install without a browser but still against the default registry, set `NF_USERNAME` +
+`NF_PASSWORD` (registry credentials) in the environment. The installer pulls with those and
+skips the sign-in; the box stays unlicensed until you license it from the console (or via
+`AUTO_PROVISION_KEY`).
 
 ### macOS / Docker Desktop
 
