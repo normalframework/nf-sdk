@@ -3,17 +3,18 @@ version: "2.1"
 volumes:
   redis-db:
   nf-var:
+  netcfg-data:
 
 services:
   redis:
-    image: normalframework.azurecr.io/normalframework/redis:3.10.4-3
+    image: normalframework.azurecr.io/normalframework/redis:3.10.9-1
     ports:
       - "6379:6379"
     volumes:
       - "redis-db:/data"
 
   nf:
-    image: normalframework.azurecr.io/normalframework/nf-full:3.10.4-3
+    image: normalframework.azurecr.io/normalframework/nf-full:3.10.9-1
     network_mode: host
     privileged: true
     environment:
@@ -34,4 +35,34 @@ services:
       - redis
     volumes:
       - "nf-var:/var/nf"
+
+  # Network and proxy configuration console (netcfgd). Web UI on
+  # http://<device-ip>:8081, admin / normal (forces a change on first
+  # sign-in). See balena/network-config/README.md.
+  network-config:
+    image: normal.azurecr.io/normalframework/netcfgd:0.1.8
+    # host networking: it configures the host's interfaces, and its probes
+    # must leave by the same path the host uses.  8081 avoids nf's PORT=80.
+    network_mode: host
+    cap_add:
+      # NET_ADMIN for interface state, NET_RAW for ping / traceroute
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      # required, or it talks to the container's own bus and finds no interfaces
+      - DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host/run/dbus/system_bus_socket
+      - NETCFG_LISTEN=:8081
+      # read-only keeps every diagnostic but blocks all changes (no proxy
+      # applied, no interface reconfigured, no containers restarted).
+      # Remove only while actively reconfiguring a site's network.
+      - NETCFG_READONLY=1
+    labels:
+      # same labels nf already has: dbus reaches NetworkManager,
+      # supervisor-api reaches the proxy / host-config settings
+      io.balena.features.dbus: '1'
+      io.balena.features.supervisor-api: '1'
+    volumes:
+      # watchdog state; losing it re-applies the proxy on next start,
+      # which restarts every container on the device
+      - "netcfg-data:/data"
 

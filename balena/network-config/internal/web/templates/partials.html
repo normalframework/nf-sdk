@@ -1,0 +1,51 @@
+{{define "header"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · Network Configuration</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="icon" href="data:,">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">Network Configuration</div>
+  {{if .User}}
+  <nav>
+    <a href="/" {{if eq .Nav "overview"}}class="on"{{end}}>Overview</a>
+    <a href="/interfaces" {{if eq .Nav "interfaces"}}class="on"{{end}}>Interfaces</a>
+    <a href="/proxy" {{if eq .Nav "proxy"}}class="on"{{end}}>Proxy</a>
+    <a href="/diagnostics" {{if eq .Nav "diagnostics"}}class="on"{{end}}>Diagnostics</a>
+    <a href="/activity" {{if eq .Nav "activity"}}class="on"{{end}}>Activity</a>
+    <a href="/settings" {{if eq .Nav "settings"}}class="on"{{end}}>Settings</a>
+  </nav>
+  <form method="post" action="/logout" class="inline">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <span class="who">{{.User}}</span>
+    <button class="link">Sign out</button>
+  </form>
+  {{end}}
+</header>
+<main>
+{{if .ReadOnly}}<div class="banner warn">Read-only mode.</div>{{end}}
+{{range .Banners}}<div class="banner {{.Kind}}">{{.Text}}</div>{{end}}
+{{with .Flash}}<div class="flash {{.Kind}}">{{.Text}}</div>{{end}}
+{{end}}
+
+{{define "footer"}}
+</main>
+<footer>netcfgd {{.Version}}</footer>
+<script src="/static/app.js"></script>
+</body>
+</html>
+{{end}}
+
+{{define "stagerow"}}
+<tr class="stage {{if .OK}}ok{{else if .Skipped}}skip{{else}}bad{{end}}">
+  <td class="name">{{.Name}}</td>
+  <td class="mark">{{if .OK}}pass{{else if .Skipped}}—{{else}}fail{{end}}</td>
+  <td class="ms">{{if .OK}}{{.Millis}} ms{{end}}</td>
+  <td class="detail">{{if .Error}}{{.Error}}{{else}}{{.Detail}}{{end}}
+    {{if .Guidance}}<div class="guidance">{{.Guidance}}</div>{{end}}</td>
+</tr>
+{{end}}

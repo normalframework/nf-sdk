@@ -1,0 +1,62 @@
+# Test composition: the 3.10 release plus the network configuration console.
+#
+# Based on balena/3.10/docker-compose.yml. The nf and redis tags below are
+# 3.10.4-3; if the target device is running a newer development build, change
+# them to match before pushing, or the push will roll NF back.
+#
+#   balena push <fleet> --source . -f docker-compose.test.yml
+#
+# The console is then at http://<device-ip>:8081 with admin/normal, which it
+# forces you to change on first sign-in.
+
+version: "2.1"
+
+volumes:
+  redis-db:
+  nf-var:
+  netcfg-data:
+
+services:
+  redis:
+    image: normalframework.azurecr.io/normalframework/redis:3.10.4-3
+    ports:
+      - "6379:6379"
+    volumes:
+      - "redis-db:/data"
+
+  nf:
+    image: normalframework.azurecr.io/normalframework/nf-full:3.10.4-3
+    network_mode: host
+    privileged: true
+    environment:
+      - PORT=80
+      - NWCONFIG_ENABLED=true
+      - NWCONFIG_BLE_TIMEOUT=0s
+      - DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host/run/dbus/system_bus_socket
+    labels:
+      io.balena.features.supervisor-api: '1'
+      io.balena.features.dbus: '1'
+    depends_on:
+      - redis
+    volumes:
+      - "nf-var:/var/nf"
+
+  network-config:
+    image: normal.azurecr.io/normalframework/netcfgd:0.1.8
+    restart: always
+    # Port 8081 deliberately avoids nf's PORT=80. Both are on host networking,
+    # so a collision here would leave one of them failing to bind.
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host/run/dbus/system_bus_socket
+      - NETCFG_LISTEN=:8081
+      # Set NETCFG_READONLY=1 once a site is commissioned to leave the
+      # diagnostics available but block configuration changes.
+    labels:
+      io.balena.features.dbus: '1'
+      io.balena.features.supervisor-api: '1'
+    volumes:
+      - netcfg-data:/data

@@ -1,0 +1,4 @@
+# The test proxy stack is a development aid, not part of the image.
+testproxy/
+.git/
+*.md

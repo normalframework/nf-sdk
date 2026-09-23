@@ -1,0 +1,65 @@
+{{template "header" .}}
+{{with .Data}}
+<div class="grid">
+  <section class="card">
+    <h2>Connectivity</h2>
+    <dl>
+      <dt>NetworkManager</dt><dd class="state-{{.Connectivity}}">{{if .Connectivity}}{{.Connectivity}}{{else}}unknown{{end}}</dd>
+      <dt>Default gateway</dt><dd>{{if .Gateway}}{{.Gateway}}{{else}}none{{end}}</dd>
+      <dt>DNS servers</dt><dd>{{if .Resolvers}}{{join .Resolvers ", "}}{{else}}none configured{{end}}</dd>
+      <dt>Host uptime</dt><dd>{{if .Uptime}}{{.Uptime}}{{else}}unknown{{end}}</dd>
+    </dl>
+    <p class="hint">"portal" means something on this network is intercepting traffic.</p>
+  </section>
+
+  <section class="card">
+    <h2>Proxy</h2>
+    <dl>
+      <dt>Mode</dt><dd>{{.Mode}}</dd>
+      <dt>On the host</dt>
+      <dd>{{if .Proxy.Enabled}}{{.Proxy.Type}} {{.Proxy.IP}}:{{.Proxy.Port}}{{else}}none{{end}}</dd>
+      <dt>Last watchdog run</dt><dd>{{since .State.LastRunAt}}</dd>
+      <dt>Last change</dt><dd>{{if .State.LastChangeAt.IsZero}}never{{else}}{{since .State.LastChangeAt}}{{end}}</dd>
+    </dl>
+    {{if .ProxyErr}}<p class="err">{{.ProxyErr}}</p>{{end}}
+    {{if .State.Frozen}}<p class="err">Watchdog frozen: {{.State.FreezeReason}}</p>{{end}}
+    {{if .State.LastError}}<p class="err">{{.State.LastError}}</p>{{end}}
+  </section>
+
+  <section class="card">
+    <h2>Device</h2>
+    {{if .DeviceErr}}<p class="err">{{.DeviceErr}}</p>{{else}}
+    <dl>
+      <dt>Status</dt><dd>{{.Device.Status}}</dd>
+      <dt>Addresses</dt><dd>{{.Device.IPAddress}}</dd>
+      <dt>balenaOS</dt><dd>{{.Device.OSVersion}}</dd>
+      <dt>Supervisor</dt><dd>{{.Device.SupervisorVer}}</dd>
+    </dl>
+    {{end}}
+  </section>
+</div>
+
+<section class="card">
+  <h2>Interfaces</h2>
+  {{if .Interfaces}}
+  <table class="grid-table">
+    <thead><tr><th>Interface</th><th>Type</th><th>State</th><th>Address</th><th>Gateway</th><th>Link</th><th></th></tr></thead>
+    <tbody>
+    {{range .Interfaces}}
+      <tr>
+        <td><a href="/interfaces#{{.Name}}"><strong>{{.Name}}</strong></a>
+            {{if .Primary}}<span class="tag">default route</span>{{end}}</td>
+        <td>{{.Type}}{{if .SSID}} · {{.SSID}}{{end}}</td>
+        <td class="state-{{.State}}">{{.State}}</td>
+        <td>{{if .Address}}{{.Address}}/{{.Prefix}} <span class="muted">({{.Method}})</span>{{else}}—{{end}}</td>
+        <td>{{if .Gateway}}{{.Gateway}}{{else}}—{{end}}</td>
+        <td>{{if .Carrier}}up{{if .Speed}} · {{.Speed}} Mb/s{{end}}{{else}}<span class="bad-text">no carrier</span>{{end}}</td>
+        <td>{{if .Owned}}<span class="tag ok">managed</span>{{end}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}<p class="hint">No configurable interfaces were found.</p>{{end}}
+</section>
+{{end}}
+{{template "footer" .}}

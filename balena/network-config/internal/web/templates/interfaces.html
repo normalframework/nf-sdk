@@ -1,0 +1,119 @@
+{{template "header" .}}
+{{with .Data}}
+
+{{with .Pending}}
+<section class="card danger">
+  <h2>Confirm the change to {{.Iface}}</h2>
+  <p>The new settings are live. Confirm them within 90 seconds or the previous settings
+  are restored automatically.</p>
+  <div class="row">
+    <form method="post" action="/interfaces/confirm" class="inline">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <input type="hidden" name="token" value="{{.Token}}">
+      <button class="primary">Keep these settings</button>
+    </form>
+    <form method="post" action="/interfaces/revert" class="inline">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <button>Revert now</button>
+    </form>
+    <span id="revert-countdown" class="countdown"></span>
+  </div>
+</section>
+{{end}}
+
+{{range .Interfaces}}
+<section class="card" id="{{.Name}}">
+  <h2>{{.Name}} <span class="muted">{{.Type}}</span>
+    <span class="state-{{.State}}">{{.State}}</span>
+    {{if .Primary}}<span class="tag">default route</span>{{end}}
+    {{if .Owned}}<span class="tag ok">managed by this console</span>{{end}}
+  </h2>
+
+  <dl class="compact">
+    <dt>MAC</dt><dd>{{if .MAC}}{{.MAC}}{{else}}—{{end}}</dd>
+    <dt>Link</dt><dd>{{if .Carrier}}up{{if .Speed}} · {{.Speed}} Mb/s {{.Duplex}}{{end}}{{else}}no carrier{{end}}</dd>
+    <dt>Address</dt><dd>{{if .Address}}{{.Address}}/{{.Prefix}} ({{.Netmask}}){{else}}none{{end}}</dd>
+    <dt>Gateway</dt><dd>{{if .Gateway}}{{.Gateway}}{{else}}none{{end}}</dd>
+    <dt>DNS</dt><dd>{{if .DNS}}{{join .DNS ", "}}{{else}}none{{end}}</dd>
+    <dt>Active profile</dt><dd>{{if .ActiveProfile}}{{.ActiveProfile}}{{else}}none{{end}}</dd>
+  </dl>
+
+  {{if .Conflicts}}
+  <div class="banner warn">
+    {{join .Conflicts ", "}} is bound to this interface at equal or higher priority and
+    may override these settings at the next boot. Remove it from
+    <code>/mnt/boot/system-connections</code>.
+  </div>
+  {{end}}
+
+  <form method="post" action="/interfaces/{{.Name}}/ipv4" class="stack">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <fieldset>
+      <legend>IPv4</legend>
+      <label class="radio"><input type="radio" name="method" value="auto" {{if eq .Method "auto"}}checked{{end}} data-toggle="static-{{.Name}}"> Automatic (DHCP)</label>
+      <label class="radio"><input type="radio" name="method" value="manual" {{if eq .Method "manual"}}checked{{end}} data-toggle="static-{{.Name}}"> Static</label>
+      <div class="static-fields" id="static-{{.Name}}">
+        <label>Address <input name="address" value="{{.Address}}" placeholder="192.168.1.50"></label>
+        <label>Netmask or prefix <input name="netmask" value="{{.Netmask}}" placeholder="255.255.255.0 or 24"></label>
+        <label>Gateway <input name="gateway" value="{{.Gateway}}" placeholder="192.168.1.1"></label>
+        <label>DNS servers <input name="dns" value="{{join .DNS ", "}}" placeholder="8.8.8.8, 1.1.1.1"></label>
+      </div>
+      <button class="primary" {{if $.ReadOnly}}disabled{{end}}>Apply IPv4 settings</button>
+      <p class="hint">Creates a profile named <code>nf-{{.Name}}</code>, which persists
+      across reboots and OS upgrades.</p>
+    </fieldset>
+  </form>
+
+  {{if eq .Type "wifi"}}
+  <form method="post" action="/interfaces/{{.Name}}/wifi" class="stack">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <fieldset>
+      <legend>Wi-Fi</legend>
+      <div class="row">
+        <label>Network <input name="ssid" value="{{.SSID}}" list="wifi-list" placeholder="SSID"></label>
+        <label>Password <input name="psk" type="password" placeholder="leave blank for an open network"></label>
+        <button type="button" id="scan-wifi">Scan</button>
+      </div>
+      <datalist id="wifi-list"></datalist>
+      <div id="wifi-results" class="results"></div>
+      <button class="primary" {{if $.ReadOnly}}disabled{{end}}>Join network</button>
+    </fieldset>
+  </form>
+  {{end}}
+
+  <form method="post" action="/interfaces/{{.Name}}/state" class="inline">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <input type="hidden" name="enabled" value="{{if eq .State "connected"}}false{{else}}true{{end}}">
+    <button {{if $.ReadOnly}}disabled{{end}}>{{if eq .State "connected"}}Disable{{else}}Enable{{end}} {{.Name}}</button>
+  </form>
+</section>
+{{end}}
+
+{{if .Interfaces}}
+<section class="card">
+  <h2>Failover priority</h2>
+  <p class="hint">Rank 1 is preferred. Sets both autoconnect priority (what comes up at
+  boot) and route metric (which link owns the default route).</p>
+  <form method="post" action="/interfaces/priority">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <table class="grid-table">
+      <thead><tr><th>Interface</th><th>Type</th><th>Rank</th><th>Current metric</th></tr></thead>
+      <tbody>
+      {{range $i, $if := .Interfaces}}
+        <tr>
+          <td><strong>{{$if.Name}}</strong>{{if $if.Primary}} <span class="tag">default route</span>{{end}}</td>
+          <td>{{$if.Type}}</td>
+          <td><input type="number" name="rank-{{$if.Name}}" min="1" max="20" value="{{if $if.Rank}}{{$if.Rank}}{{else}}{{inc $i}}{{end}}" class="rank"></td>
+          <td>{{if $if.RouteMetric}}{{$if.RouteMetric}}{{else}}default{{end}}</td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+    <button class="primary" {{if $.ReadOnly}}disabled{{end}}>Save priority</button>
+  </form>
+</section>
+{{end}}
+
+{{if .NMVersion}}<p class="muted">NetworkManager {{.NMVersion}}</p>{{end}}
+{{end}}
+{{template "footer" .}}

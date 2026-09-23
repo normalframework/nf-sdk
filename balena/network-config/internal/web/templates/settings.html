@@ -1,0 +1,44 @@
+{{template "header" .}}
+{{with .Data}}
+
+<section class="card{{if .Auth.MustChange}} danger{{end}}">
+  <h2>Console password</h2>
+  {{if .Auth.MustChange}}
+  <p>Still using the default credentials. Nothing else is reachable until you change them.</p>
+  {{else}}
+  <p class="hint">Last changed {{if .Auth.ChangedAt.IsZero}}never{{else}}{{stamp .Auth.ChangedAt}}{{end}}. Changing it signs out every session.</p>
+  {{end}}
+  <form method="post" action="/password" class="stack">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <label>Username <input name="username" value="{{.Auth.Username}}" autocomplete="username"></label>
+    <label>Current password <input name="current" type="password" autocomplete="current-password" required></label>
+    <label>New password <input name="password" type="password" autocomplete="new-password" required minlength="8"></label>
+    <label>Confirm new password <input name="confirm" type="password" autocomplete="new-password" required minlength="8"></label>
+    <button class="primary" {{if $.ReadOnly}}disabled{{end}}>Change password</button>
+  </form>
+</section>
+
+{{if not .Auth.MustChange}}
+<section class="card">
+  <h2>Hostname</h2>
+  {{if .HostErr}}<p class="err">{{.HostErr}}</p>{{end}}
+  <form method="post" action="/hostname" class="stack">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <label>Device hostname <input name="hostname" value="{{.Hostname}}"></label>
+    <button {{if $.ReadOnly}}disabled{{end}}>Save hostname</button>
+  </form>
+  <p class="hint">Containers keep the old hostname until the device reboots.</p>
+</section>
+
+<section class="card danger">
+  <h2>Reboot</h2>
+  <p class="hint">Unreachable for a minute or two.</p>
+  <form method="post" action="/reboot" class="inline">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <label class="check"><input type="checkbox" name="force" value="true"> Ignore update locks</label>
+    <button {{if $.ReadOnly}}disabled{{end}}>Reboot this device</button>
+  </form>
+</section>
+{{end}}
+{{end}}
+{{template "footer" .}}

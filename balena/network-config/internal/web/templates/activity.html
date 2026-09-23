@@ -1,0 +1,22 @@
+{{template "header" .}}
+<section class="card">
+  <h2>Activity</h2>
+  <p class="hint">Newest first. The same entries go to <code>balena logs</code>.</p>
+  <table class="grid-table log" id="activity-table">
+    <thead><tr><th>Time</th><th>Level</th><th>Source</th><th>Who</th><th>What</th></tr></thead>
+    <tbody>
+    {{range .Data}}
+      <tr class="lvl-{{.Level}}">
+        <td class="ts">{{stamp .At}}</td>
+        <td>{{.Level}}</td>
+        <td>{{.Source}}</td>
+        <td>{{if .Actor}}{{.Actor}}{{else}}—{{end}}</td>
+        <td>{{.Message}}{{if .Detail}}<div class="muted">{{.Detail}}</div>{{end}}</td>
+      </tr>
+    {{else}}
+      <tr><td colspan="5" class="muted">Nothing recorded yet.</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</section>
+{{template "footer" .}}

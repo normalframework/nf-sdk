@@ -1,0 +1,63 @@
+{{template "header" .}}
+{{with .Data}}
+
+<section class="card">
+  <h2>Endpoints</h2>
+  <p class="hint">Everything this device needs to reach. Failures here are the list to
+  hand to the network administrator.</p>
+  <div class="row">
+    <button type="button" id="run-endpoints" class="primary">Run the checks</button>
+    <a href="/api/bundle" class="button">Download diagnostic bundle</a>
+  </div>
+  <div id="endpoint-results" class="results"></div>
+</section>
+
+<section class="card">
+  <h2>Cloudflare tunnel</h2>
+  <p class="hint">cloudflared uses port <strong>7844</strong>, not 443, and the port can't
+  be changed. It has no proxy support of its own.</p>
+  <button type="button" id="run-tunnel" class="primary">Check the tunnel</button>
+  <div id="tunnel-results" class="results"></div>
+</section>
+
+<div class="grid">
+  <section class="card">
+    <h2>Ping</h2>
+    <div class="row">
+      <label>Host <input id="ping-host" value="{{if .Gateway}}{{.Gateway}}{{else}}1.1.1.1{{end}}"></label>
+      <label>Count <input id="ping-count" type="number" value="4" min="1" max="30" class="rank"></label>
+      <button type="button" id="run-ping" class="primary">Ping</button>
+    </div>
+    <pre id="ping-results" class="console"></pre>
+  </section>
+
+  <section class="card">
+    <h2>Traceroute</h2>
+    <div class="row">
+      <label>Host <input id="trace-host" value="api.balena-cloud.com"></label>
+      <label>Max hops <input id="trace-hops" type="number" value="20" min="1" max="40" class="rank"></label>
+      <button type="button" id="run-trace" class="primary">Trace</button>
+    </div>
+    <pre id="trace-results" class="console"></pre>
+  </section>
+
+  <section class="card">
+    <h2>DNS</h2>
+    <p class="hint">Resolvers in use: {{if .Resolvers}}{{join .Resolvers ", "}}{{else}}none configured{{end}}</p>
+    <div class="row">
+      <label>Name <input id="dns-host" value="api.balena-cloud.com"></label>
+      <button type="button" id="run-dns" class="primary">Resolve</button>
+    </div>
+    <pre id="dns-results" class="console"></pre>
+  </section>
+
+  <section class="card">
+    <h2>Path</h2>
+    <dl class="compact">
+      <dt>Default gateway</dt><dd>{{if .Gateway}}{{.Gateway}}{{else}}none — this device has no route off its subnet{{end}}</dd>
+      <dt>Resolvers</dt><dd>{{if .Resolvers}}{{join .Resolvers ", "}}{{else}}none{{end}}</dd>
+    </dl>
+  </section>
+</div>
+{{end}}
+{{template "footer" .}}

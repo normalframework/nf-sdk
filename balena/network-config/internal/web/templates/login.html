@@ -1,0 +1,12 @@
+{{template "header" .}}
+<div class="card narrow">
+  <h1>Sign in</h1>
+  <form method="post" action="/login">
+    <input type="hidden" name="next" value="{{with .Data}}{{.Next}}{{end}}">
+    <label>Username <input name="username" autocomplete="username" autofocus required></label>
+    <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+    <button class="primary">Sign in</button>
+  </form>
+  <p class="hint">This connection is not encrypted.</p>
+</div>
+{{template "footer" .}}

@@ -1,0 +1,62 @@
+# Test proxies for exercising netcfgd against something realistic.
+#
+# All three services are unmodified upstream images; only the configuration is
+# mounted in. Run this on a host the device can reach, then point the console's
+# proxy settings at it.
+#
+#   docker compose up -d
+#
+#   3128  Squid, no authentication, CONNECT to 443 only  (the common corporate default)
+#   3129  Squid, basic auth as proxyuser/proxypass, CONNECT to 443 and 7844
+#   1080  Dante SOCKS5, no authentication, unrestricted
+#   8080  mitmproxy, re-encrypts TLS with its own CA  (the enterprise MITM case)
+#
+# mitmproxy generates a CA on first run into ./mitmproxy/. That file is what a
+# device has to trust, and reproduces what Zscaler, Palo Alto and similar do on
+# a customer network.
+
+services:
+  squid-open:
+    image: ubuntu/squid:latest
+    container_name: testproxy-squid-open
+    restart: unless-stopped
+    ports:
+      - "3128:3128"
+    volumes:
+      - ./squid/open.conf:/etc/squid/squid.conf:ro
+
+  squid-auth:
+    image: ubuntu/squid:latest
+    container_name: testproxy-squid-auth
+    restart: unless-stopped
+    ports:
+      - "3129:3128"
+    volumes:
+      - ./squid/auth.conf:/etc/squid/squid.conf:ro
+      - ./squid/passwd:/etc/squid/passwd:ro
+
+  # A TLS-intercepting proxy. Unlike the others, this one terminates TLS and
+  # re-issues certificates from its own CA, so a client that does not trust
+  # that CA sees every HTTPS connection fail at the certificate.
+  mitm:
+    image: mitmproxy/mitmproxy:latest
+    container_name: testproxy-mitm
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # The generated CA lands here: mitmproxy-ca-cert.pem is what to feed to
+      # balenaRootCA and to netcfgd's CA bundle.
+      - ./mitmproxy:/home/mitmproxy/.mitmproxy
+    # block_global defaults to on and would refuse connections from anything
+    # that is not loopback, which includes the device under test.
+    command: mitmdump --listen-port 8080 --set block_global=false
+
+  socks5:
+    image: vimagick/dante:latest
+    container_name: testproxy-dante
+    restart: unless-stopped
+    ports:
+      - "1080:1080"
+    volumes:
+      - ./dante/sockd.conf:/etc/sockd.conf:ro

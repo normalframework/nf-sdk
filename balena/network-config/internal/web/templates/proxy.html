@@ -1,0 +1,140 @@
+{{template "header" .}}
+{{with .Data}}
+
+<section class="card">
+  <h2>On the host</h2>
+  {{if .HostErr}}<p class="err">{{.HostErr}}</p>{{else}}
+  <dl class="compact">
+    <dt>Proxy</dt><dd>{{if .Host.Enabled}}{{.Host.Type}} {{.Host.IP}}:{{.Host.Port}}{{else}}none{{end}}</dd>
+    <dt>Bypass list</dt><dd>{{if .Host.NoProxy}}{{join .Host.NoProxy ", "}}{{else}}local and reserved subnets only{{end}}</dd>
+    <dt>Supervisor</dt><dd>{{if .SupVer}}{{.SupVer}}{{else}}{{.SupVerErr}}{{end}}</dd>
+  </dl>
+  {{end}}
+  <p class="hint">Applying a proxy change restarts every container on this device.
+  The watchdog compares before acting and won't make a change that isn't needed.</p>
+  {{if eq .SupVer "16.5.3"}}
+  <div class="banner warn">Supervisor 16.5.3 ignores the bypass list. Update the Supervisor
+  for those entries to take effect.</div>
+  {{end}}
+</section>
+
+{{if .State.Frozen}}
+<section class="card danger">
+  <h2>Watchdog frozen</h2>
+  <p>{{.State.FreezeReason}}</p>
+  <p class="hint">Fix the setting that caused the churn before clearing this. Lifts on its
+  own after an hour.</p>
+  <form method="post" action="/proxy/unfreeze" class="inline">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <button class="primary" {{if $.ReadOnly}}disabled{{end}}>Clear the breaker</button>
+  </form>
+</section>
+{{end}}
+
+<section class="card">
+  <h2>Test a proxy</h2>
+  <p class="hint">Runs a real handshake without changing anything on the host. Test before
+  you save.</p>
+  <div class="row">
+    <button type="button" id="test-proxy" class="primary">Test the settings below</button>
+    <button type="button" id="test-direct">Test without a proxy</button>
+    <label>Target <input id="test-target" value="{{.Watchdog.ProbeTarget}}" size="30"></label>
+  </div>
+  <div id="test-results" class="results"></div>
+</section>
+
+<form method="post" action="/proxy">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+
+<section class="card">
+  <h2>Proxy settings</h2>
+  <fieldset>
+    <legend>Mode</legend>
+    {{$mode := .Config.Mode}}
+    <label class="radio"><input type="radio" name="mode" value="off" {{if eq $mode "off"}}checked{{end}}>
+      <strong>Off</strong> — remove any proxy from the host.</label>
+    <label class="radio"><input type="radio" name="mode" value="static" {{if eq $mode "static"}}checked{{end}}>
+      <strong>Static</strong> — always apply the proxy below.</label>
+    <label class="radio"><input type="radio" name="mode" value="fallback" {{if eq $mode "fallback"}}checked{{end}}>
+      <strong>Fallback</strong> — apply at boot, clear it if there's still no internet
+      after the grace period. Only acts once per boot.</label>
+    <label class="radio"><input type="radio" name="mode" value="dynamic" {{if eq $mode "dynamic"}}checked{{end}}>
+      <strong>Dynamic</strong> — apply only once the proxy is proven to work. Also removes
+      it if it stops working.</label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Proxy</legend>
+    <div class="row">
+      <label>Type
+        <select name="type">
+          {{$t := .Config.Type}}
+          {{range $.Data.Types}}<option value="{{.}}" {{if eq (printf "%s" .) $t}}selected{{end}}>{{.}}</option>{{end}}
+        </select>
+      </label>
+      <label>Address <input name="ip" id="proxy-ip" value="{{.Config.IP}}" placeholder="proxy.example.com or 10.0.0.9"></label>
+      <label>Port <input name="port" id="proxy-port" type="number" min="1" max="65535" value="{{if .Config.Port}}{{.Config.Port}}{{end}}"></label>
+    </div>
+    <div class="row">
+      <label>Username <input name="login" id="proxy-login" value="{{.Config.Login}}" autocomplete="off"></label>
+      <label>Password <input name="password" id="proxy-password" type="password" autocomplete="new-password"
+        placeholder="{{if .Config.Password}}unchanged{{else}}none set{{end}}"></label>
+      <label class="check"><input type="checkbox" name="clearPassword" value="true"> Clear the stored password</label>
+    </div>
+    <label>Bypass these destinations
+      <input name="noProxy" value="{{join .Config.NoProxy ", "}}" placeholder="203.0.113.0/24, 198.51.100.7">
+    </label>
+    <p class="hint">Local and reserved subnets are already excluded, as is the proxy itself.</p>
+    <label>DNS over the proxy (dnsu2t)
+      <input name="dns" value="{{.Config.DNS}}" placeholder="blank for off, &quot;on&quot; for the default, or 1.1.1.1:53">
+    </label>
+    <p class="hint">Forces DNS over TCP through the proxy, for networks that block UDP/53.</p>
+  </fieldset>
+</section>
+
+<section class="card">
+  <h2>Watchdog limits</h2>
+  <div class="row">
+    <label>Grace period (min) <input type="number" name="graceMinutes" value="{{.Watchdog.GraceMinutes}}" min="1"></label>
+    <label>Passes before applying <input type="number" name="requiredPasses" value="{{.Watchdog.RequiredPasses}}" min="1"></label>
+    <label>Failures before removing <input type="number" name="requiredFailures" value="{{.Watchdog.RequiredFailures}}" min="1"></label>
+  </div>
+  <div class="row">
+    <label>Minimum time between changes (min) <input type="number" name="minDwellMinutes" value="{{.Watchdog.MinDwellMinutes}}" min="1"></label>
+    <label>Maximum changes per hour <input type="number" name="maxChangesPerHour" value="{{.Watchdog.MaxChangesPerHour}}" min="1"></label>
+    <label>Check interval (s) <input type="number" name="intervalSeconds" value="{{.Watchdog.IntervalSeconds}}" min="10"></label>
+  </div>
+  <label>Probe target <input name="probeTarget" value="{{.Watchdog.ProbeTarget}}"></label>
+  <label class="check"><input type="checkbox" name="autoReboot" value="true" {{if .Watchdog.AutoReboot}}checked{{end}}>
+    Reboot after a proxy change</label>
+  <p class="hint">Existing connections aren't closed when a proxy is applied, so only a
+  reboot forces all traffic through it. Applies to new proxies, not to clearing one.</p>
+  <label class="check"><input type="checkbox" name="force" value="true" {{if .Watchdog.Force}}checked{{end}}>
+    Ignore update locks</label>
+  <p class="hint">Leave off to avoid interrupting an application update in progress.</p>
+</section>
+
+<div class="actions">
+  <button class="primary" {{if $.ReadOnly}}disabled{{end}}>Save settings</button>
+</div>
+</form>
+
+<section class="card">
+  <h2>Watchdog state</h2>
+  <dl class="compact">
+    <dt>Last run</dt><dd>{{since .State.LastRunAt}}</dd>
+    <dt>Last probe</dt><dd>{{if .State.LastProbeOK}}passed{{else}}failed{{end}}</dd>
+    <dt>Consecutive passes</dt><dd>{{.State.Passes}}</dd>
+    <dt>Consecutive failures</dt><dd>{{.State.Failures}}</dd>
+    <dt>Fallback outcome this boot</dt><dd>{{if .State.FallbackOutcome}}{{.State.FallbackOutcome}}{{else}}undecided{{end}}</dd>
+    <dt>Last change</dt><dd>{{if .State.LastChangeAt.IsZero}}never{{else}}{{stamp .State.LastChangeAt}}{{end}}</dd>
+  </dl>
+  {{if .State.LastError}}<p class="err">{{.State.LastError}}</p>{{end}}
+  <form method="post" action="/proxy/apply-now" class="inline">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <button {{if $.ReadOnly}}disabled{{end}}>Run the watchdog now</button>
+  </form>
+  <p class="hint">Runs one pass now. Still respects the dwell and flap limits.</p>
+</section>
+{{end}}
+{{template "footer" .}}

@@ -1,0 +1,37 @@
+# Standalone netcfgd, for running the console on its own against a device.
+#
+# The full NF composition is in docker-compose.test.yml; this one is the
+# minimum needed to bring up just the network console.
+
+version: "2.1"
+
+volumes:
+  netcfg-data:
+
+services:
+  network-config:
+    image: normal.azurecr.io/normalframework/netcfgd:0.1.8
+    restart: always
+    # Host networking is required: the console configures the host's
+    # interfaces, and its probes have to leave by the same path the host uses.
+    network_mode: host
+    cap_add:
+      # NET_ADMIN for interface state changes, NET_RAW for ICMP in the ping
+      # and traceroute tools. Neither needs the container to be privileged.
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      # Without this, the D-Bus client talks to the container's own bus
+      # instead of the host's, and no interfaces are found.
+      - DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host/run/dbus/system_bus_socket
+      - NETCFG_LISTEN=:8081
+    labels:
+      # dbus reaches NetworkManager, which is the only way to configure NICs;
+      # supervisor-api reaches the proxy and hostname settings.
+      io.balena.features.dbus: '1'
+      io.balena.features.supervisor-api: '1'
+    volumes:
+      # The watchdog's record of what it has already applied lives here. Lose
+      # it and the watchdog re-applies the proxy on next start, restarting
+      # every container on the device.
+      - netcfg-data:/data
