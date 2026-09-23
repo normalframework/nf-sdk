@@ -52,10 +52,8 @@ services:
       # required, or it talks to the container's own bus and finds no interfaces
       - DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host/run/dbus/system_bus_socket
       - NETCFG_LISTEN=:8081
-      # read-only keeps every diagnostic but blocks all changes (no proxy
-      # applied, no interface reconfigured, no containers restarted).
-      # Remove only while actively reconfiguring a site's network.
-      - NETCFG_READONLY=1
+      # changes are allowed.  Set NETCFG_READONLY=1 (e.g. as a balena
+      # device variable) to keep the diagnostics but block every change.
     labels:
       # same labels nf already has: dbus reaches NetworkManager,
       # supervisor-api reaches the proxy / host-config settings

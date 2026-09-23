@@ -23,14 +23,14 @@ customer network cannot reach the cloud.
 
 * **URL:** `http://<device-ip>:8081` (host networking; nf keeps port 80)
 * **Login:** `admin` / `normal` — a password change is forced on first sign-in
-* **Read-only by default.** `NETCFG_READONLY=1` is set in the compose
-  file. All diagnostics work (proxy tester, endpoint checklist, TLS
-  interception detection, ping, traceroute, support bundle) but nothing
-  can be changed. To configure a proxy or an interface, remove that
-  variable (or override it in balenaCloud device variables for the one
-  device), make the change, then put it back.
+* **Changes are enabled by default.** To lock a device down, set the
+  device variable `NETCFG_READONLY=1` on the `network-config` service in
+  balenaCloud. All diagnostics keep working (proxy tester, endpoint
+  checklist, TLS interception detection, ping, traceroute, support
+  bundle) but nothing can be changed. This only restarts the
+  `network-config` container.
 
-Things to know before turning read-only off:
+Things to know before making changes:
 
 * **Applying a proxy restarts every container on the device** (balenaOS
   restarts balenaEngine on a `host-config` change). Use the proxy tester
